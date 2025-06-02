@@ -144,6 +144,7 @@ const BrickDiv = styled.div<{
   borderColor: string;
   fontSize: number;
   isHoveredStrideBrick?: boolean;
+  isDirectlyHovered?: boolean;
 }>`
   position: absolute;
   left: 0;
@@ -152,7 +153,7 @@ const BrickDiv = styled.div<{
   height: ${(props) => props.height}px;
   border: 2px solid ${(props) => props.borderColor};
   background-color: ${(props) =>
-    props.isHoveredStrideBrick ? "#333" : "transparent"};
+    props.isDirectlyHovered ? "#333" : "transparent"};
   display: flex;
   align-items: center;
   justify-content: center;
@@ -161,7 +162,7 @@ const BrickDiv = styled.div<{
   color: white; // 3. Text color inside brick to white
   box-sizing: border-box;
   cursor: pointer;
-  transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out; // Added box-shadow to transition
+  transition: background-color 0.2s ease-in-out; // Only background-color transition, box-shadow (border) is instant
 
   box-shadow: ${(props) =>
     props.isHoveredStrideBrick
@@ -169,9 +170,10 @@ const BrickDiv = styled.div<{
       : "none"};
 
   &:hover {
-    // General hover slightly lightens non-active bricks, active ones are handled by isHoveredStrideBrick
+    // Apply a general hover background if not the directly hovered one (which already has #333)
+    // and not part of an already highlighted stride that sets its own effects
     background-color: ${(props) =>
-      props.isHoveredStrideBrick ? "#333" : "rgba(255, 255, 255, 0.1)"};
+      props.isDirectlyHovered ? "#333" : "rgba(255, 255, 255, 0.1)"};
   }
 `;
 
@@ -266,8 +268,8 @@ const StrideEnvelopeDiv = styled.div<{
   pointer-events: none;
   z-index: 5;
   box-sizing: border-box;
-  // New outward blurred shadow using strideColor
-  box-shadow: 0 0 ${BORDER_WIDTH_PX * 3}px ${BORDER_WIDTH_PX}px
+  // New outward blurred shadow using strideColor, with increased thickness
+  box-shadow: 0 0 ${BORDER_WIDTH_PX * 6}px ${BORDER_WIDTH_PX * 2}px
     ${(props) => props.strideColor};
 `;
 
@@ -638,14 +640,41 @@ const MasonryWall: React.FC = () => {
     return STRIDE_COLORS[strideIndex % STRIDE_COLORS.length];
   };
 
+  const getStrideStartTime = (sIndex: number): number => {
+    if (sIndex < 0 || sIndex >= strides.length) return 0;
+    let startTime = 0;
+    // Robot repositions to get to this stride and all previous ones
+    startTime += (sIndex + 1) * robotRepositionTime;
+    // Bricks in all previous strides
+    for (let i = 0; i < sIndex; i++) {
+      if (strides[i]) {
+        startTime += strides[i].length * repositionTime;
+      }
+    }
+    return startTime;
+  };
+
   const calculateBrickTime = (brick: Brick | null): number => {
     if (!brick || brick.strideIndex < 0 || brick.orderInStride < 0) return 0;
-    // Strides array might not be populated if brick data is from a premature hover
-    if (!strides[brick.strideIndex]) return 0;
+    if (strides.length === 0 || !strides[brick.strideIndex]) return 0;
 
-    const timeWithinStride = brick.orderInStride * repositionTime;
-    const timeToReachStride = brick.strideIndex * robotRepositionTime;
-    return timeToReachStride + timeWithinStride;
+    let totalTime = 0;
+
+    // Add robot reposition time for all strides up to and including the current one.
+    // (brick.strideIndex + 1) robot movements.
+    totalTime += (brick.strideIndex + 1) * robotRepositionTime;
+
+    // Add brick building time for all bricks in previous strides.
+    for (let i = 0; i < brick.strideIndex; i++) {
+      if (strides[i]) {
+        totalTime += strides[i].length * repositionTime;
+      }
+    }
+
+    // Add brick building time for bricks before the current one in the current stride.
+    totalTime += brick.orderInStride * repositionTime;
+
+    return totalTime;
   };
 
   const allRenderableBricks = strides.flat();
@@ -704,6 +733,7 @@ const MasonryWall: React.FC = () => {
                   borderColor={getStrideColor(brick.strideIndex)}
                   fontSize={Math.max(8, BRICK_HEIGHT * wallScale * 0.7)}
                   isHoveredStrideBrick={isHighlightedStride}
+                  isDirectlyHovered={hoveredBrick?.id === brick.id}
                   style={{ pointerEvents: "none" }} // hitbox captures events
                 >
                   {brick.strideIndex + 1}.{brick.orderInStride + 1}
@@ -854,14 +884,11 @@ const MasonryWall: React.FC = () => {
             </div>
             <p>
               <strong>Stride start time:</strong>{" "}
-              {hoveredBrick.strideIndex * robotRepositionTime}s (
-              {hoveredBrick.strideIndex} * {robotRepositionTime}s)
+              {getStrideStartTime(hoveredBrick.strideIndex)}s
             </p>
             <p>
               <strong>Build start time:</strong>{" "}
-              {calculateBrickTime(hoveredBrick)}s ({hoveredBrick.strideIndex} *{" "}
-              {robotRepositionTime}s + {hoveredBrick.orderInStride} *{" "}
-              {repositionTime}s)
+              {calculateBrickTime(hoveredBrick)}s
             </p>
           </HoverInfoBox>
         ) : (
@@ -874,12 +901,13 @@ const MasonryWall: React.FC = () => {
           <h4>Stride Order ({strides.length} total)</h4>
           {strides.map((stride, index) => {
             if (!strideEnvelopes[index]) return null; // Guard against missing envelope data
-            const strideStartTime = index * robotRepositionTime;
-            const strideEndTime =
-              stride.length > 0
-                ? index * robotRepositionTime +
-                  (stride.length - 1) * repositionTime
-                : strideStartTime;
+
+            const calculatedStrideStartTime = getStrideStartTime(index);
+            const strideBricklayingDuration = stride.length * repositionTime;
+            // End time is when the last brick in the stride is completed
+            const calculatedStrideEndTime =
+              calculatedStrideStartTime + strideBricklayingDuration;
+
             return (
               <StrideStatItem
                 key={index}
@@ -902,7 +930,7 @@ const MasonryWall: React.FC = () => {
                 <div>
                   <span className="label">Time:</span>
                   <span>
-                    {strideStartTime}s - {strideEndTime}s
+                    {calculatedStrideStartTime}s - {calculatedStrideEndTime}s
                   </span>
                 </div>
               </StrideStatItem>
