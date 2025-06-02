@@ -168,29 +168,20 @@ const BrickDiv = styled.div<{
   width: ${(props) => props.width}px;
   height: ${(props) => props.height}px;
   border: 2px solid ${(props) => props.borderColor};
-  background-color: ${(props) =>
-    props.isDirectlyHovered ? "#333" : "transparent"};
+  background-color: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: ${(props) => props.fontSize}px;
-  font-weight: ${(props) => (props.isHoveredStrideBrick ? "bold" : "normal")};
+  font-weight: ${(props) => (props.isDirectlyHovered ? "bold" : "normal")};
   color: white; // 3. Text color inside brick to white
   box-sizing: border-box;
   cursor: pointer;
-  transition: background-color 0.2s ease-in-out; // Only background-color transition, box-shadow (border) is instant
 
   box-shadow: ${(props) =>
     props.isHoveredStrideBrick
       ? `inset 0 0 0 3px ${props.borderColor}` // Thicker border inwards (2px border + 3px inset shadow)
       : "none"};
-
-  &:hover {
-    // Apply a general hover background if not the directly hovered one (which already has #333)
-    // and not part of an already highlighted stride that sets its own effects
-    background-color: ${(props) =>
-      props.isDirectlyHovered ? "#333" : "rgba(255, 255, 255, 0.1)"};
-  }
 `;
 
 const DebugSection = styled.div`
