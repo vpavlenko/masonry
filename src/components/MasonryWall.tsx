@@ -135,12 +135,13 @@ const DebugSection = styled.div`
   margin-bottom: 20px;
   h4 {
     margin-top: 0;
+    margin-left: 20px;
     margin-bottom: 8px; // Reduced margin-bottom for h4
-    color: #f0f0f0; // Ensure h4 inside DebugSection is also inverted
+    color: #fff; // Ensure h4 inside DebugSection is also inverted
   }
   label {
     // Ensure labels inside DebugSection are inverted
-    color: #f0f0f0;
+    color: #ddd;
   }
 `;
 
@@ -310,6 +311,45 @@ const WallOverlaySegment = styled.div<{
   z-index: 4; // Just below the envelope border (5) and bricks (default)
 `;
 
+const LoadingOverlay = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  border-radius: 4px;
+`;
+
+const Spinner = styled.div`
+  width: 40px;
+  height: 40px;
+  border: 4px solid #333;
+  border-top: 4px solid #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+
+  @keyframes spin {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+`;
+
+const LoadingText = styled.div`
+  color: #fff;
+  margin-top: 16px;
+  font-size: 14px;
+  text-align: center;
+`;
+
 const MasonryWall: React.FC = () => {
   const [strides, setStrides] = useState<Stride[]>([]);
   const [strideEnvelopes, setStrideEnvelopes] = useState<
@@ -327,26 +367,38 @@ const MasonryWall: React.FC = () => {
   const [wallHeight, setWallHeight] = useState(2000); // Default WALL_HEIGHT
   const [robotWidth, setRobotWidth] = useState<number>(ROBOT_WIDTH);
   const [robotHeight, setRobotHeight] = useState<number>(ROBOT_HEIGHT);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const wallColumnRef = useRef<HTMLDivElement>(null);
   const allBricksRef = useRef<Brick[]>([]); // To store the initial grid of all bricks
 
   useEffect(() => {
-    const currentAllBricks = generateInitialBrickLayout(
-      currentBondType,
-      wallWidth,
-      wallHeight
-    );
-    allBricksRef.current = currentAllBricks;
+    setIsRecalculating(true);
 
-    const { strides: calculatedStrides, envelopes: calculatedEnvelopes } =
-      calculateWallStrides(
-        currentAllBricks,
-        robotWidth,
-        robotHeight,
-        wallWidth
-      );
-    setStrides(calculatedStrides);
-    setStrideEnvelopes(calculatedEnvelopes);
+    // Use setTimeout to ensure the loading state is visible before starting heavy calculations
+    const timeoutId = setTimeout(() => {
+      try {
+        const currentAllBricks = generateInitialBrickLayout(
+          currentBondType,
+          wallWidth,
+          wallHeight
+        );
+        allBricksRef.current = currentAllBricks;
+
+        const { strides: calculatedStrides, envelopes: calculatedEnvelopes } =
+          calculateWallStrides(
+            currentAllBricks,
+            robotWidth,
+            robotHeight,
+            wallWidth
+          );
+        setStrides(calculatedStrides);
+        setStrideEnvelopes(calculatedEnvelopes);
+      } finally {
+        setIsRecalculating(false);
+      }
+    }, 50); // Small delay to ensure loading state renders
+
+    return () => clearTimeout(timeoutId);
   }, [currentBondType, wallWidth, wallHeight, robotWidth, robotHeight]); // also react to envelope changes
 
   useEffect(() => {
@@ -474,57 +526,68 @@ const MasonryWall: React.FC = () => {
             height: wallHeight * wallScale,
           }}
         >
-          {allRenderableBricks.map((brick) => {
-            const brickLength = brick.length; // Use actual brick length
-            const isHighlightedStride =
-              currentHighlightStrideIndex !== null &&
-              brick.strideIndex === currentHighlightStrideIndex;
+          {isRecalculating && (
+            <LoadingOverlay>
+              <div>
+                <Spinner />
+                <LoadingText>Recalculating wall layout...</LoadingText>
+              </div>
+            </LoadingOverlay>
+          )}
 
-            // Calculate extended hitbox dimensions (covering right head joint and top bed joint)
-            const additionalWidth =
-              brick.x + brickLength < wallWidth ? HEAD_JOINT : 0; // Use state variable
-            const additionalHeight =
-              brick.y + COURSE_HEIGHT < wallHeight // Use state variable
-                ? COURSE_HEIGHT - BRICK_HEIGHT
-                : 0;
+          {!isRecalculating &&
+            allRenderableBricks.map((brick) => {
+              const brickLength = brick.length; // Use actual brick length
+              const isHighlightedStride =
+                currentHighlightStrideIndex !== null &&
+                brick.strideIndex === currentHighlightStrideIndex;
 
-            const hitWidth = (brickLength + additionalWidth) * wallScale;
-            const hitHeight = (BRICK_HEIGHT + additionalHeight) * wallScale;
+              // Calculate extended hitbox dimensions (covering right head joint and top bed joint)
+              const additionalWidth =
+                brick.x + brickLength < wallWidth ? HEAD_JOINT : 0; // Use state variable
+              const additionalHeight =
+                brick.y + COURSE_HEIGHT < wallHeight // Use state variable
+                  ? COURSE_HEIGHT - BRICK_HEIGHT
+                  : 0;
 
-            const visualWidth = brickLength * wallScale;
-            const visualHeight = BRICK_HEIGHT * wallScale;
+              const hitWidth = (brickLength + additionalWidth) * wallScale;
+              const hitHeight = (BRICK_HEIGHT + additionalHeight) * wallScale;
 
-            return (
-              <BrickHitBox
-                key={brick.id}
-                left={brick.x * wallScale}
-                bottom={brick.y * wallScale}
-                width={hitWidth}
-                height={hitHeight}
-                onMouseEnter={() => {
-                  if (hoveredBrick?.id !== brick.id) setHoveredBrick(brick);
-                }}
-                onMouseLeave={() => {
-                  if (hoveredBrick?.id === brick.id) setHoveredBrick(null);
-                }}
-              >
-                <BrickDiv
-                  width={visualWidth}
-                  height={visualHeight}
-                  borderColor={getStrideColor(brick.strideIndex)}
-                  fontSize={Math.max(8, BRICK_HEIGHT * wallScale * 0.7)}
-                  isHoveredStrideBrick={isHighlightedStride}
-                  isDirectlyHovered={hoveredBrick?.id === brick.id}
-                  style={{ pointerEvents: "none" }} // hitbox captures events
+              const visualWidth = brickLength * wallScale;
+              const visualHeight = BRICK_HEIGHT * wallScale;
+
+              return (
+                <BrickHitBox
+                  key={brick.id}
+                  left={brick.x * wallScale}
+                  bottom={brick.y * wallScale}
+                  width={hitWidth}
+                  height={hitHeight}
+                  onMouseEnter={() => {
+                    if (hoveredBrick?.id !== brick.id) setHoveredBrick(brick);
+                  }}
+                  onMouseLeave={() => {
+                    if (hoveredBrick?.id === brick.id) setHoveredBrick(null);
+                  }}
                 >
-                  {brick.strideIndex + 1}.{brick.orderInStride + 1}
-                </BrickDiv>
-              </BrickHitBox>
-            );
-          })}
+                  <BrickDiv
+                    width={visualWidth}
+                    height={visualHeight}
+                    borderColor={getStrideColor(brick.strideIndex)}
+                    fontSize={Math.max(8, BRICK_HEIGHT * wallScale * 0.7)}
+                    isHoveredStrideBrick={isHighlightedStride}
+                    isDirectlyHovered={hoveredBrick?.id === brick.id}
+                    style={{ pointerEvents: "none" }} // hitbox captures events
+                  >
+                    {brick.strideIndex + 1}.{brick.orderInStride + 1}
+                  </BrickDiv>
+                </BrickHitBox>
+              );
+            })}
 
           {/* Overlay dimming everything outside the highlighted envelope */}
-          {currentHighlightStrideIndex !== null &&
+          {!isRecalculating &&
+            currentHighlightStrideIndex !== null &&
             strideEnvelopes[currentHighlightStrideIndex] && (
               <>
                 {(() => {
@@ -591,7 +654,8 @@ const MasonryWall: React.FC = () => {
             )}
 
           {/* Dotted envelope border */}
-          {currentHighlightStrideIndex !== null &&
+          {!isRecalculating &&
+            currentHighlightStrideIndex !== null &&
             strideEnvelopes[currentHighlightStrideIndex] && (
               <StrideEnvelopeDiv
                 left={
@@ -937,8 +1001,9 @@ const MasonryWall: React.FC = () => {
               {formatTime(getStrideStartTime(hoveredBrick.strideIndex))}
             </p>
             <p>
-              <strong>Build start time</strong>{" "}
-              {formatTime(calculateBrickTime(hoveredBrick))}
+              <strong>Brick build time</strong>{" "}
+              {formatTime(calculateBrickTime(hoveredBrick))} -{" "}
+              {formatTime(calculateBrickTime(hoveredBrick) + repositionTime)}
             </p>
           </HoverInfoBox>
         ) : (
@@ -971,14 +1036,12 @@ const MasonryWall: React.FC = () => {
                   {index + 1}
                 </StrideColorSwatch>
                 <span>{stride.length} bricks</span>
-                <span className="coords">
-                  ({strideEnvelopes[index].minX.toFixed(0)},{" "}
-                  {strideEnvelopes[index].minY.toFixed(0)}) mm
-                </span>
-                <span className="time">
+                <div style={{ paddingLeft: "2em" }}>
+                  env: x = {strideEnvelopes[index].minX.toFixed(0)} mm, y ={" "}
+                  {strideEnvelopes[index].minY.toFixed(0)} mm, time:{" "}
                   {formatTime(calculatedStrideStartTime)} -{" "}
                   {formatTime(calculatedStrideEndTime)}
-                </span>
+                </div>
               </StrideStatItem>
             );
           })}

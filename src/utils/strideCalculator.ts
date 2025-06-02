@@ -152,6 +152,11 @@ export const calculateWallStrides = (
         }
       }
 
+      // Discard stride candidates that don't include any brick on the bottom-most course
+      if (!tempCurrentStrideAttempt.some((b) => b.y === bottomMostY)) {
+        continue;
+      }
+
       if (tempCurrentStrideAttempt.length > bestStrideOption.count) {
         bestStrideOption = {
           startX: candidateStartX,
