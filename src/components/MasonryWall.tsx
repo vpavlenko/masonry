@@ -13,10 +13,6 @@ import {
   type StrideMeta,
 } from "../utils/strideCalculator";
 
-// Constants from assignment
-const WALL_WIDTH = 2300; // mm
-const WALL_HEIGHT = 2000; // mm
-
 // Robot constraints
 const ROBOT_WIDTH = 800; // mm
 const ROBOT_HEIGHT = 1300; // mm
@@ -139,6 +135,7 @@ const DebugSection = styled.div`
   margin-bottom: 20px;
   h4 {
     margin-top: 0;
+    margin-bottom: 8px; // Reduced margin-bottom for h4
     color: #f0f0f0; // Ensure h4 inside DebugSection is also inverted
   }
   label {
@@ -150,12 +147,36 @@ const DebugSection = styled.div`
 const DebugInput = styled.input`
   width: 60px;
   margin-left: 5px;
+  margin-right: 5px;
   padding: 4px;
   border-radius: 3px;
   border: 1px solid #ccc;
   background-color: #333; // Inverted style
   color: #fff; // Inverted style
   border: 1px solid #555; // Inverted style
+`;
+
+const DebugSlider = styled.input`
+  width: 120px;
+  margin-left: 10px;
+  margin-right: 5px;
+`;
+
+const InputGroup = styled.div`
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+
+  label {
+    min-width: 120px;
+    color: #f0f0f0;
+  }
+
+  span.unit {
+    color: #aaa;
+    font-size: 12px;
+    margin-left: 5px;
+  }
 `;
 
 const HoverInfoBox = styled.div`
@@ -187,6 +208,7 @@ const HoverInfoBox = styled.div`
   h4 {
     // Ensure h4 inside HoverInfoBox is inverted
     color: #f0f0f0;
+    margin-bottom: 8px; // Reduced margin-bottom for h4
   }
 `;
 
@@ -194,8 +216,7 @@ const StrideStatItem = styled.div`
   margin-bottom: 8px; // Increased spacing
   font-size: 12px;
   display: flex;
-  flex-direction: column; // Stack items vertically initially
-  align-items: flex-start;
+  align-items: center; // Changed to single line layout
   padding-bottom: 8px;
   border-bottom: 1px solid #eee; // Separator for items
   color: #f0f0f0; // Default text color for item
@@ -205,22 +226,19 @@ const StrideStatItem = styled.div`
     border-bottom: none;
   }
 
-  div {
-    // Sub-div for horizontal groups
-    display: flex;
-    align-items: center;
-    margin-bottom: 3px;
-  }
   span.label {
     // For labels like "Time:"
     font-weight: bold;
-    min-width: 50px; // Ensure alignment
-    margin-right: 5px;
+    margin-right: 8px;
     color: #aaa; // Inverted style
   }
   span.coords {
     font-family: monospace;
     color: #ddd; // Inverted style
+    margin-right: 15px;
+  }
+  span.time {
+    margin-right: 15px;
   }
 `;
 
@@ -268,7 +286,7 @@ const StrideStatsContainer = styled.div`
   background-color: #f9f9f9; // Slightly different background for distinction
   h4 {
     margin-top: 0;
-    margin-bottom: 15px; // Increased margin
+    margin-bottom: 8px; // Reduced margin-bottom for h4
     color: #f0f0f0; // Ensure h4 is inverted
   }
   background-color: #111; // Inverted style
@@ -430,6 +448,23 @@ const MasonryWall: React.FC = () => {
       ? hoveredBrick.strideIndex
       : null;
 
+  // Helper function to format seconds as mm:ss or hh:mm:ss when hours > 0
+  const formatTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+
+    if (hours > 0) {
+      return `${hours.toString().padStart(2, "0")}:${minutes
+        .toString()
+        .padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+    } else {
+      return `${minutes.toString().padStart(2, "0")}:${remainingSeconds
+        .toString()
+        .padStart(2, "0")}`;
+    }
+  };
+
   return (
     <AppContainer>
       <WallColumn ref={wallColumnRef}>
@@ -576,71 +611,11 @@ const MasonryWall: React.FC = () => {
       <DebugColumn>
         <WallHeader>
           <h2>Masonry Wall Builder</h2>
-          <p>
-            Wall: {WALL_WIDTH}mm × {WALL_HEIGHT}mm | Strides: {strides.length} |
-            Wall: {wallWidth}mm × {wallHeight}mm | Strides: {strides.length} |
-            Total Bricks: {allBricksRef.current.length} | Placed:{" "}
-            {allRenderableBricks.length} | Bond:{" "}
-            {currentBondType.charAt(0).toUpperCase() + currentBondType.slice(1)}
-          </p>
         </WallHeader>
+
         <DebugSection>
-          <h4>Constants:</h4>
+          <h4>Bond Type</h4>
           <div style={{ marginBottom: "10px" }}>
-            <label>Reposition within stride (sec): </label>
-            <DebugInput
-              type="number"
-              value={repositionTime}
-              onChange={(e) =>
-                setRepositionTime(Math.max(0, Number(e.target.value)))
-              }
-            />
-          </div>
-          <div>
-            <label>Robot reposition (sec): </label>
-            <DebugInput
-              type="number"
-              value={robotRepositionTime}
-              onChange={(e) =>
-                setRobotRepositionTime(Math.max(0, Number(e.target.value)))
-              }
-            />
-          </div>
-        </DebugSection>
-        <DebugSection>
-          <h4>Wall Settings:</h4>
-          <div style={{ marginBottom: "10px" }}>
-            <label>Wall Width (mm): </label>
-            <DebugInput
-              type="number"
-              value={wallWidth}
-              onChange={(e) =>
-                setWallWidth(
-                  Math.max(100, Math.round(Number(e.target.value) / 100) * 100)
-                )
-              }
-              step={100}
-            />
-          </div>
-          <div style={{ marginBottom: "10px" }}>
-            <label>Wall Height (mm): </label>
-            <DebugInput
-              type="number"
-              value={wallHeight}
-              onChange={(e) =>
-                setWallHeight(
-                  Math.max(
-                    COURSE_HEIGHT,
-                    Math.round(Number(e.target.value) / COURSE_HEIGHT) *
-                      COURSE_HEIGHT
-                  )
-                )
-              }
-              step={COURSE_HEIGHT}
-            />
-          </div>
-          <div style={{ marginBottom: "10px" }}>
-            <label>Bond Type: </label>
             {/* Basic button styling for active/inactive states */}
             {(["stretcher", "english_cross", "flemish"] as BondType[]).map(
               (bond) => (
@@ -663,16 +638,130 @@ const MasonryWall: React.FC = () => {
                     borderRadius: "3px",
                   }}
                 >
-                  {bond.charAt(0).toUpperCase() + bond.slice(1)}
+                  {bond
+                    .split("_")
+                    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(" ")}
                 </button>
               )
             )}
           </div>
         </DebugSection>
+
         <DebugSection>
-          <h4>Envelope Settings:</h4>
-          <div style={{ marginBottom: "10px" }}>
-            <label>Envelope Width (mm): </label>
+          <h4>Robot Timings</h4>
+          <InputGroup>
+            <label>Reposition within stride </label>
+            <DebugInput
+              type="number"
+              value={repositionTime}
+              onChange={(e) =>
+                setRepositionTime(Math.max(0, Number(e.target.value)))
+              }
+            />
+            <span className="unit">sec</span>
+            <DebugSlider
+              type="range"
+              min="0"
+              max="60"
+              step="1"
+              value={repositionTime}
+              onChange={(e) =>
+                setRepositionTime(Math.max(0, Number(e.target.value)))
+              }
+            />
+          </InputGroup>
+          <InputGroup>
+            <label>Robot reposition </label>
+            <DebugInput
+              type="number"
+              value={robotRepositionTime}
+              onChange={(e) =>
+                setRobotRepositionTime(Math.max(0, Number(e.target.value)))
+              }
+            />
+            <span className="unit">sec</span>
+            <DebugSlider
+              type="range"
+              min="0"
+              max="1200"
+              step="60"
+              value={robotRepositionTime}
+              onChange={(e) =>
+                setRobotRepositionTime(Math.max(0, Number(e.target.value)))
+              }
+            />
+          </InputGroup>
+        </DebugSection>
+
+        <DebugSection>
+          <h4>Wall Settings</h4>
+          <InputGroup>
+            <label>Wall Width </label>
+            <DebugInput
+              type="number"
+              value={wallWidth}
+              onChange={(e) =>
+                setWallWidth(
+                  Math.max(100, Math.round(Number(e.target.value) / 100) * 100)
+                )
+              }
+              step={100}
+            />
+            <span className="unit">mm</span>
+            <DebugSlider
+              type="range"
+              min="100"
+              max="5000"
+              step="100"
+              value={wallWidth}
+              onChange={(e) =>
+                setWallWidth(
+                  Math.max(100, Math.round(Number(e.target.value) / 100) * 100)
+                )
+              }
+            />
+          </InputGroup>
+          <InputGroup>
+            <label>Wall Height </label>
+            <DebugInput
+              type="number"
+              value={wallHeight}
+              onChange={(e) =>
+                setWallHeight(
+                  Math.max(
+                    COURSE_HEIGHT,
+                    Math.round(Number(e.target.value) / COURSE_HEIGHT) *
+                      COURSE_HEIGHT
+                  )
+                )
+              }
+              step={COURSE_HEIGHT}
+            />
+            <span className="unit">mm</span>
+            <DebugSlider
+              type="range"
+              min={COURSE_HEIGHT}
+              max="4000"
+              step={COURSE_HEIGHT}
+              value={wallHeight}
+              onChange={(e) =>
+                setWallHeight(
+                  Math.max(
+                    COURSE_HEIGHT,
+                    Math.round(Number(e.target.value) / COURSE_HEIGHT) *
+                      COURSE_HEIGHT
+                  )
+                )
+              }
+            />
+          </InputGroup>
+        </DebugSection>
+
+        <DebugSection>
+          <h4>Envelope Settings</h4>
+          <InputGroup>
+            <label>Envelope Width </label>
             <DebugInput
               type="number"
               value={robotWidth}
@@ -683,9 +772,22 @@ const MasonryWall: React.FC = () => {
               }
               step={100}
             />
-          </div>
-          <div style={{ marginBottom: "10px" }}>
-            <label>Envelope Height (mm): </label>
+            <span className="unit">mm</span>
+            <DebugSlider
+              type="range"
+              min="100"
+              max="2000"
+              step="100"
+              value={robotWidth}
+              onChange={(e) =>
+                setRobotWidth(
+                  Math.max(100, Math.round(Number(e.target.value) / 100) * 100)
+                )
+              }
+            />
+          </InputGroup>
+          <InputGroup>
+            <label>Envelope Height </label>
             <DebugInput
               type="number"
               value={robotHeight}
@@ -696,7 +798,20 @@ const MasonryWall: React.FC = () => {
               }
               step={100}
             />
-          </div>
+            <span className="unit">mm</span>
+            <DebugSlider
+              type="range"
+              min="100"
+              max="2000"
+              step="100"
+              value={robotHeight}
+              onChange={(e) =>
+                setRobotHeight(
+                  Math.max(100, Math.round(Number(e.target.value) / 100) * 100)
+                )
+              }
+            />
+          </InputGroup>
         </DebugSection>
 
         {hoveredBrick ? (
@@ -709,79 +824,121 @@ const MasonryWall: React.FC = () => {
               }}
             >
               Brick #{hoveredBrick.strideIndex + 1}.
-              {hoveredBrick.orderInStride + 1}:
+              {hoveredBrick.orderInStride + 1}
             </h4>
             <div
               style={{
                 position: "relative",
-                width: hoveredBrick.length * wallScale + 4, // +4 for border
-                height: BRICK_HEIGHT * wallScale + 4, // +4 for border
-                margin: "20px auto 30px auto", // Increased margin for BL/TR text
+                width: hoveredBrick.length * wallScale * 3 + 12, // Three times bigger + border
+                height: BRICK_HEIGHT * wallScale * 3 + 12, // Three times bigger + border
+                margin: "30px auto 40px auto", // Increased margin for coordinate text
               }}
             >
+              {/* Main brick rectangle */}
               <div
                 style={{
                   position: "absolute",
-                  left: "2px",
-                  bottom: "2px",
-                  width: hoveredBrick.length * wallScale,
-                  height: BRICK_HEIGHT * wallScale,
+                  left: "6px",
+                  bottom: "6px",
+                  width: hoveredBrick.length * wallScale * 3,
+                  height: BRICK_HEIGHT * wallScale * 3,
                   border: `2px solid ${getStrideColor(
                     hoveredBrick.strideIndex
-                  )}`,
+                  )}`, // Same thickness as selected
                   backgroundColor: "transparent",
                   boxSizing: "border-box",
-                }}
-              />
-              <p
-                style={{
-                  position: "absolute",
-                  bottom: "-20px", // Adjusted for visibility
-                  left: "0px",
-                  fontSize: "12px",
-                  margin: 0,
-                  color: "#aaa", // Lighter color for coordinate text
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                BL: {hoveredBrick.x.toFixed(1)}, {hoveredBrick.y.toFixed(1)}
-              </p>
-              <p
+                {/* Width dimension arrow inside brick */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    left: "10%",
+                    right: "10%",
+                    height: "1px",
+                    backgroundColor: "#fff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      left: "-5px",
+                      color: "#fff",
+                      fontSize: "12px",
+                    }}
+                  >
+                    ←
+                  </span>
+                  <span
+                    style={{
+                      backgroundColor: "#1a1a1a",
+                      padding: "2px 4px",
+                      fontSize: "10px",
+                      color: "#fff",
+                    }}
+                  >
+                    {hoveredBrick.length.toFixed(0)}
+                  </span>
+                  <span
+                    style={{
+                      position: "absolute",
+                      right: "-5px",
+                      color: "#fff",
+                      fontSize: "12px",
+                    }}
+                  >
+                    →
+                  </span>
+                </div>
+              </div>
+
+              {/* Bottom Left (BL) coordinates */}
+              <div
                 style={{
                   position: "absolute",
-                  top: "-20px", // Adjusted for visibility
-                  right: "0px",
-                  fontSize: "12px",
-                  margin: 0,
-                  color: "#aaa", // Lighter color for coordinate text
+                  left: "6px",
+                  bottom: "-25px",
+                  fontSize: "10px",
+                  color: "#aaa",
+                  lineHeight: "1.2",
+                  whiteSpace: "nowrap",
                 }}
               >
-                TR: {(hoveredBrick.x + hoveredBrick.length).toFixed(1)},{" "}
-                {(hoveredBrick.y + BRICK_HEIGHT).toFixed(1)}
-              </p>
+                x = {hoveredBrick.x.toFixed(1)}
+                <br />y = {hoveredBrick.y.toFixed(1)}
+              </div>
+
+              {/* Top Right (TR) coordinates */}
+              <div
+                style={{
+                  position: "absolute",
+                  right: "6px",
+                  top: "-25px",
+                  fontSize: "10px",
+                  color: "#aaa",
+                  lineHeight: "1.2",
+                  textAlign: "right",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                x = {(hoveredBrick.x + hoveredBrick.length).toFixed(1)}
+                <br />y = {(hoveredBrick.y + BRICK_HEIGHT).toFixed(1)}
+              </div>
             </div>
             <p>
-              <strong>Type:</strong> {hoveredBrick.type} (L:{" "}
-              {hoveredBrick.length.toFixed(0)}mm)
-            </p>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <p style={{ textAlign: "left" }}>
-                <strong>BL:</strong> ({hoveredBrick.x.toFixed(1)},{" "}
-                {hoveredBrick.y.toFixed(1)})mm
-              </p>
-              <p style={{ textAlign: "right" }}>
-                <strong>TR:</strong> (
-                {(hoveredBrick.x + hoveredBrick.length) // Use actual brick length
-                  .toFixed(1)}
-                , {(hoveredBrick.y + BRICK_HEIGHT).toFixed(1)})mm
-              </p>
-            </div>
-            <p>
-              <strong>Stride start time:</strong>{" "}
-              {getStrideStartTime(hoveredBrick.strideIndex)}s
+              <strong>Stride start time</strong>{" "}
+              {formatTime(getStrideStartTime(hoveredBrick.strideIndex))}
             </p>
             <p>
-              <strong>Build start time:</strong>{" "}
-              {calculateBrickTime(hoveredBrick)}s
+              <strong>Build start time</strong>{" "}
+              {formatTime(calculateBrickTime(hoveredBrick))}
             </p>
           </HoverInfoBox>
         ) : (
@@ -807,28 +964,21 @@ const MasonryWall: React.FC = () => {
                 onMouseEnter={() => setHoveredStrideFromList(index)}
                 onMouseLeave={() => setHoveredStrideFromList(null)}
               >
-                <div>
-                  <StrideColorSwatch
-                    bgColor={getStrideColor(index)}
-                    textColor={getTextColorForBackground(getStrideColor(index))}
-                  >
-                    {index + 1}
-                  </StrideColorSwatch>
-                  <span>{stride.length} bricks</span>
-                </div>
-                <div>
-                  <span className="label">Pos:</span>
-                  <span className="coords">
-                    ({strideEnvelopes[index].minX.toFixed(0)},{" "}
-                    {strideEnvelopes[index].minY.toFixed(0)})mm
-                  </span>
-                </div>
-                <div>
-                  <span className="label">Time:</span>
-                  <span>
-                    {calculatedStrideStartTime}s - {calculatedStrideEndTime}s
-                  </span>
-                </div>
+                <StrideColorSwatch
+                  bgColor={getStrideColor(index)}
+                  textColor={getTextColorForBackground(getStrideColor(index))}
+                >
+                  {index + 1}
+                </StrideColorSwatch>
+                <span>{stride.length} bricks</span>
+                <span className="coords">
+                  ({strideEnvelopes[index].minX.toFixed(0)},{" "}
+                  {strideEnvelopes[index].minY.toFixed(0)}) mm
+                </span>
+                <span className="time">
+                  {formatTime(calculatedStrideStartTime)} -{" "}
+                  {formatTime(calculatedStrideEndTime)}
+                </span>
               </StrideStatItem>
             );
           })}
