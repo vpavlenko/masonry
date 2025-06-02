@@ -23,52 +23,16 @@ const ROBOT_HEIGHT = 1300; // mm
 
 // Stride colors - red, blue, orange, green, purple, aqua, lime, then contrasting colors
 const STRIDE_COLORS = [
-  "#FFFFFF",
-
-  "#FF0000",
-
-  "#00FB47",
-  "#9500B3",
-
-  "#787878",
-
-  "#03B9D5",
-  "#ff7328",
-  "#ff0",
-  "#0000FF",
-  "#007000",
-  "#0000FF",
-  "#EA7EFF",
-  "#820000", // toma to
+  "#FFFFFF", // white
   "#FF0000", // red
-  "#FFA500", // orange
-  "#008000", // green
-  "#800080", // purple
-  "#00FFFF", // aqua
-  "#00FF00", // lime
-  "#FF1493", // deep pink
-  "#FFD700", // gold
-  "#8A2BE2", // blue violet
-  "#FF4500", // orange red
-  "#32CD32", // lime green
-  "#FF69B4", // hot pink
-  "#00CED1", // dark turquoise
-  "#FF6347", // tomato
-  "#9932CC", // dark orchid
-  "#00FA9A", // medium spring green
-  "#1E90FF", // dodger blue
-  "#FF8C00", // dark orange
-  "#ADFF2F", // green yellow
-  "#DC143C", // crimson
-  "#40E0D0", // turquoise
-  "#BA55D3", // medium orchid
-  "#7FFF00", // chartreuse
-  "#CD5C5C", // indian red
-  "#4169E1", // royal blue
-  "#FF7F50", // coral
-  "#98FB98", // pale green
-  "#DA70D6", // orchid
-  "#87CEEB", // sky blue
+  "#00FB47", // lime
+  "#9500B3", // purple
+  "#787878", // gray
+  "#03B9D5", // aqua
+  "#ff7328", // orange
+  "#ff0", // yellow
+  "#0000FF", // blue
+  "#fc8eac", // pink
 ];
 
 // Styled Components
@@ -160,7 +124,7 @@ const BrickDiv = styled.div<{
   justify-content: center;
   font-size: ${(props) => props.fontSize}px;
   font-weight: ${(props) => (props.isDirectlyHovered ? "bold" : "normal")};
-  color: ${(props) => (props.isHoveredStrideBrick ? "white" : "gray")};
+  color: ${(props) => (props.isHoveredStrideBrick ? "white" : "#444")};
   box-sizing: border-box;
   cursor: pointer;
   overflow: hidden;

@@ -85,29 +85,28 @@ export const calculateWallStrides = (
     );
 
     /* -------------------------------------------------------------------
-       2. Build the candidate X positions *only* from the bricks that are
-          on that bottom-most course.  Each brick yields two start-X
+       2. Build the candidate X positions from *all* unplaced bricks,
+          regardless of their course.  Each brick yields two start-X
           options: one where the envelope's left edge touches the brick's
           left edge, and one where it touches the brick's right edge.
        ------------------------------------------------------------------- */
     const candidateRobotStartXSet = new Set<number>();
 
-    unplacedBricks
-      .filter((b) => b.y === bottomMostY)
-      .forEach((brick) => {
-        // Option A – envelope starts at (or before wall origin) so that
-        // the brick's left edge is inside the envelope.
-        const candidate1 = Math.max(0, Math.min(brick.x, wallWidth - envWidth));
-        candidateRobotStartXSet.add(candidate1);
+    // Loop through every unplaced brick (no course filtering)
+    unplacedBricks.forEach((brick) => {
+      // Option A – envelope starts at (or before wall origin) so that
+      // the brick's left edge is inside the envelope.
+      const candidate1 = Math.max(0, Math.min(brick.x, wallWidth - envWidth));
+      candidateRobotStartXSet.add(candidate1);
 
-        // Option B – envelope shifted right so that the brick's right edge
-        // is flush with the envelope's right edge.
-        const candidate2 = Math.max(
-          0,
-          Math.min(brick.x + brick.length - envWidth, wallWidth - envWidth)
-        );
-        candidateRobotStartXSet.add(candidate2);
-      });
+      // Option B – envelope shifted right so that the brick's right edge
+      // is flush with the envelope's right edge.
+      const candidate2 = Math.max(
+        0,
+        Math.min(brick.x + brick.length - envWidth, wallWidth - envWidth)
+      );
+      candidateRobotStartXSet.add(candidate2);
+    });
 
     const candidateRobotStartXPositions = Array.from(
       candidateRobotStartXSet
