@@ -1,4 +1,4 @@
-import React from "react";
+// import React from "react"; // Removed - not needed with new JSX transform
 // import "./App.css"; // Removed
 import MasonryWall from "./components/MasonryWall";
 import styled, { createGlobalStyle } from "styled-components";
