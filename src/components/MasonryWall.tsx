@@ -37,6 +37,19 @@ type Stride = Brick[];
 
 // Stride colors - red, blue, orange, green, purple, aqua, lime, then contrasting colors
 const STRIDE_COLORS = [
+  "#FFFFFF",
+  "#820000", // toma to
+  "#FF0000",
+  "#007000",
+  "#00FB47",
+  "#9500B3",
+  "#EA7EFF",
+  "#787878",
+  "#0000FF",
+  "#03B9D5",
+  "#ff7328",
+  "#ff0",
+  "#0000FF",
   "#FF0000", // red
   "#0000FF", // blue
   "#FFA500", // orange
