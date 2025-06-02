@@ -10,14 +10,15 @@ const BRICK_HEIGHT = 50; // mm
 const HEAD_JOINT = 10; // mm
 const COURSE_HEIGHT = 62.5; // mm (brick height + bed joint)
 const CUSTOM_BRICK_ECB1_LENGTH = 40; // mm, for English Cross Bond courses 1 and 3
+const CUSTOM_BRICK_FLEMISH_HEADER_LENGTH = 45; // mm, for Flemish bond
 
 // Robot constraints
 const ROBOT_WIDTH = 800; // mm
 const ROBOT_HEIGHT = 1300; // mm
 
-type BondType = "stretcher" | "english_cross";
+type BondType = "stretcher" | "english_cross" | "flemish";
 
-type BrickType = "full" | "half" | "custom_40" | "custom_end";
+type BrickType = "full" | "half" | "custom_40" | "custom_end" | "custom_45";
 
 interface Brick {
   x: number;
@@ -106,19 +107,19 @@ const WallColumn = styled.div`
 const DebugColumn = styled.div`
   flex: 0 0 30%;
   height: 100%;
-  background-color: #f5f5f5;
+  background-color: #000; // Dark background
   padding: 15px;
   overflow-y: auto;
-  color: #333; // Default text color for debug panel
+  color: #f0f0f0; // Light default text color
   display: flex;
   flex-direction: column; // To allow fixed positioning of elements at bottom
 
   h3,
   h4 {
-    color: #333;
+    color: #f0f0f0; // Light text for headers
   }
   label {
-    color: #333;
+    color: #f0f0f0; // Light text for labels
   }
 `;
 
@@ -126,7 +127,7 @@ const WallHeader = styled.div`
   margin-bottom: 20px;
   h2,
   p {
-    color: #333; // Changed from #ccc as it's now on a light background
+    color: #f0f0f0; // Light text for wall header
   }
 `;
 
@@ -177,6 +178,7 @@ const BrickDiv = styled.div<{
   color: white; // 3. Text color inside brick to white
   box-sizing: border-box;
   cursor: pointer;
+  overflow: hidden;
 
   box-shadow: ${(props) =>
     props.isHoveredStrideBrick
@@ -188,6 +190,11 @@ const DebugSection = styled.div`
   margin-bottom: 20px;
   h4 {
     margin-top: 0;
+    color: #f0f0f0; // Ensure h4 inside DebugSection is also inverted
+  }
+  label {
+    // Ensure labels inside DebugSection are inverted
+    color: #f0f0f0;
   }
 `;
 
@@ -197,6 +204,9 @@ const DebugInput = styled.input`
   padding: 4px;
   border-radius: 3px;
   border: 1px solid #ccc;
+  background-color: #333; // Inverted style
+  color: #fff; // Inverted style
+  border: 1px solid #555; // Inverted style
 `;
 
 const HoverInfoBox = styled.div`
@@ -214,6 +224,21 @@ const HoverInfoBox = styled.div`
     color: #555;
   }
   /* text-align: center; // Removed for left alignment */
+  background-color: #1a1a1a; // Inverted style
+  border: 1px solid #444; // Inverted style
+  color: #f0f0f0; // Inverted style
+  p {
+    margin: 5px 0;
+    font-size: 14px;
+    color: #f0f0f0; // Ensure p text is inverted
+  }
+  strong {
+    color: #ccc; // Inverted style
+  }
+  h4 {
+    // Ensure h4 inside HoverInfoBox is inverted
+    color: #f0f0f0;
+  }
 `;
 
 const StrideStatItem = styled.div`
@@ -224,6 +249,8 @@ const StrideStatItem = styled.div`
   align-items: flex-start;
   padding-bottom: 8px;
   border-bottom: 1px solid #eee; // Separator for items
+  color: #f0f0f0; // Default text color for item
+  border-bottom: 1px solid #333; // Inverted style
 
   &:last-child {
     border-bottom: none;
@@ -240,15 +267,18 @@ const StrideStatItem = styled.div`
     font-weight: bold;
     min-width: 50px; // Ensure alignment
     margin-right: 5px;
+    color: #aaa; // Inverted style
   }
   span.coords {
     font-family: monospace;
+    color: #ddd; // Inverted style
   }
 `;
 
-const StrideColorSwatch = styled.span<{ bgColor: string }>`
+const StrideColorSwatch = styled.span<{ bgColor: string; textColor: string }>`
   background-color: ${(props) => props.bgColor};
   color: white; // Text on swatch
+  color: ${(props) => props.textColor};
   padding: 1px 6px;
   border-radius: 3px;
   margin-right: 8px;
@@ -290,7 +320,10 @@ const StrideStatsContainer = styled.div`
   h4 {
     margin-top: 0;
     margin-bottom: 15px; // Increased margin
+    color: #f0f0f0; // Ensure h4 is inverted
   }
+  background-color: #111; // Inverted style
+  border: 1px solid #333; // Inverted style
 `;
 
 // Semi–transparent overlay segments used to dim everything outside the highlighted envelope
@@ -323,13 +356,15 @@ const MasonryWall: React.FC = () => {
   const [robotRepositionTime, setRobotRepositionTime] = useState(600);
   const [wallScale, setWallScale] = useState(0.1); // Initial small scale
   const [currentBondType, setCurrentBondType] = useState<BondType>("stretcher"); // New state for bond type
+  const [wallWidth, setWallWidth] = useState(2300); // Default WALL_WIDTH
+  const [wallHeight, setWallHeight] = useState(2000); // Default WALL_HEIGHT
   const wallColumnRef = useRef<HTMLDivElement>(null);
   const allBricksRef = useRef<Brick[]>([]); // To store the initial grid of all bricks
 
   useEffect(() => {
     const generateInitialBrickLayout = (bondType: BondType): Brick[] => {
       const generatedBricks: Brick[] = [];
-      const numCourses = Math.floor(WALL_HEIGHT / COURSE_HEIGHT);
+      const numCourses = Math.floor(wallHeight / COURSE_HEIGHT); // Use state variable
 
       for (let courseIndex = 0; courseIndex < numCourses; courseIndex++) {
         const y = courseIndex * COURSE_HEIGHT;
@@ -338,8 +373,9 @@ const MasonryWall: React.FC = () => {
 
         if (bondType === "stretcher") {
           const isEvenCourse = courseIndex % 2 === 0;
-          while (currentX < WALL_WIDTH) {
-            const remainingRowLength = WALL_WIDTH - currentX;
+          while (currentX < wallWidth) {
+            // Use state variable
+            const remainingRowLength = wallWidth - currentX; // Use state variable
             if (remainingRowLength <= 0) break;
 
             let brickToPlace: { type: BrickType; length: number } | null = null;
@@ -373,12 +409,13 @@ const MasonryWall: React.FC = () => {
                 y,
                 type: brickToPlace.type,
                 length: brickToPlace.length,
-                strideIndex: -1,
-                orderInStride: -1,
+                strideIndex: -1, // Will be updated by stride calculation
+                orderInStride: -1, // Will be updated by stride calculation
                 id: `brick-${courseIndex}-${brickInCourseIndex}`,
               });
 
-              if (currentX + brickToPlace.length < WALL_WIDTH) {
+              if (currentX + brickToPlace.length < wallWidth) {
+                // Use state variable
                 currentX += brickToPlace.length + HEAD_JOINT;
               } else {
                 currentX += brickToPlace.length;
@@ -390,8 +427,9 @@ const MasonryWall: React.FC = () => {
           }
         } else if (bondType === "english_cross") {
           const patternType = courseIndex % 4;
-          while (currentX < WALL_WIDTH) {
-            const remainingRowLength = WALL_WIDTH - currentX;
+          while (currentX < wallWidth) {
+            // Use state variable
+            const remainingRowLength = wallWidth - currentX; // Use state variable
             if (remainingRowLength <= 0) break;
 
             let brickToPlace: { type: BrickType; length: number } | null = null;
@@ -463,11 +501,111 @@ const MasonryWall: React.FC = () => {
                 y,
                 type: brickToPlace.type,
                 length: brickToPlace.length,
+                strideIndex: -1, // Will be updated by stride calculation
+                orderInStride: -1, // Will be updated by stride calculation
+                id: `brick-${courseIndex}-${brickInCourseIndex}`,
+              });
+              if (currentX + brickToPlace.length < wallWidth) {
+                // Use state variable
+                currentX += brickToPlace.length + HEAD_JOINT;
+              } else {
+                currentX += brickToPlace.length;
+              }
+              brickInCourseIndex++;
+            } else {
+              break;
+            }
+          }
+        } else if (bondType === "flemish") {
+          const isLine1Pattern = courseIndex % 2 === 0;
+          while (currentX < wallWidth) {
+            const remainingRowLength = wallWidth - currentX;
+            if (remainingRowLength <= 0) break;
+            let brickToPlace: { type: BrickType; length: number } | null = null;
+
+            if (isLine1Pattern) {
+              // Full - Half - Full - Half
+              const useFullBrick = brickInCourseIndex % 2 === 0;
+              if (useFullBrick) {
+                if (remainingRowLength >= FULL_BRICK_LENGTH) {
+                  brickToPlace = { type: "full", length: FULL_BRICK_LENGTH };
+                } else if (remainingRowLength >= HALF_BRICK_LENGTH) {
+                  brickToPlace = { type: "half", length: HALF_BRICK_LENGTH };
+                } else {
+                  brickToPlace = {
+                    type: "custom_end",
+                    length: remainingRowLength,
+                  };
+                }
+              } else {
+                // Use Half Brick
+                if (remainingRowLength >= HALF_BRICK_LENGTH) {
+                  brickToPlace = { type: "half", length: HALF_BRICK_LENGTH };
+                } else {
+                  brickToPlace = {
+                    type: "custom_end",
+                    length: remainingRowLength,
+                  };
+                }
+              }
+            } else {
+              // Line 2: Custom(45) - Half - Full - Half - Full
+              if (brickInCourseIndex === 0) {
+                // Custom 45mm
+                if (remainingRowLength >= CUSTOM_BRICK_FLEMISH_HEADER_LENGTH) {
+                  brickToPlace = {
+                    type: "custom_45",
+                    length: CUSTOM_BRICK_FLEMISH_HEADER_LENGTH,
+                  };
+                } else {
+                  brickToPlace = {
+                    type: "custom_end",
+                    length: remainingRowLength,
+                  };
+                }
+              } else {
+                // After the first custom_45 brick, the pattern is Half, Full, Half, Full ...
+                // So, at brickInCourseIndex 1, 3, 5... (odd indices) place Half
+                // At brickInCourseIndex 2, 4, 6... (even indices) place Full
+                const isHalfBrickSpot = (brickInCourseIndex - 1) % 2 === 0;
+                if (isHalfBrickSpot) {
+                  // Half brick
+                  if (remainingRowLength >= HALF_BRICK_LENGTH) {
+                    brickToPlace = { type: "half", length: HALF_BRICK_LENGTH };
+                  } else {
+                    brickToPlace = {
+                      type: "custom_end",
+                      length: remainingRowLength,
+                    };
+                  }
+                } else {
+                  // Full brick
+                  if (remainingRowLength >= FULL_BRICK_LENGTH) {
+                    brickToPlace = { type: "full", length: FULL_BRICK_LENGTH };
+                  } else if (remainingRowLength >= HALF_BRICK_LENGTH) {
+                    // Can't fit full, try half
+                    brickToPlace = { type: "half", length: HALF_BRICK_LENGTH };
+                  } else {
+                    brickToPlace = {
+                      type: "custom_end",
+                      length: remainingRowLength,
+                    };
+                  }
+                }
+              }
+            }
+
+            if (brickToPlace) {
+              generatedBricks.push({
+                x: currentX,
+                y,
+                type: brickToPlace.type,
+                length: brickToPlace.length,
                 strideIndex: -1,
                 orderInStride: -1,
                 id: `brick-${courseIndex}-${brickInCourseIndex}`,
               });
-              if (currentX + brickToPlace.length < WALL_WIDTH) {
+              if (currentX + brickToPlace.length < wallWidth) {
                 currentX += brickToPlace.length + HEAD_JOINT;
               } else {
                 currentX += brickToPlace.length;
@@ -558,7 +696,7 @@ const MasonryWall: React.FC = () => {
         allWallBricks.forEach((brick) => {
           const candidate1 = Math.max(
             0,
-            Math.min(brick.x, WALL_WIDTH - ROBOT_WIDTH)
+            Math.min(brick.x, wallWidth - ROBOT_WIDTH) // Use state variable
           );
           candidateRobotStartXSet.add(candidate1);
 
@@ -566,7 +704,7 @@ const MasonryWall: React.FC = () => {
             0,
             Math.min(
               brick.x + brick.length - ROBOT_WIDTH,
-              WALL_WIDTH - ROBOT_WIDTH
+              wallWidth - ROBOT_WIDTH // Use state variable
             )
           );
           candidateRobotStartXSet.add(candidate2);
@@ -687,7 +825,7 @@ const MasonryWall: React.FC = () => {
       calculateWallStrides(currentAllBricks);
     setStrides(calculatedStrides);
     setStrideEnvelopes(calculatedEnvelopes);
-  }, [currentBondType]); // Added currentBondType as a dependency
+  }, [currentBondType, wallWidth, wallHeight]); // Added currentBondType and wallWidth/wallHeight as dependencies
 
   useEffect(() => {
     const updateScale = () => {
@@ -699,13 +837,13 @@ const MasonryWall: React.FC = () => {
         const availableHeight = wallColumnElement.offsetHeight - padding; // Assuming similar padding for height or just overall container height
 
         if (
-          WALL_WIDTH > 0 &&
-          WALL_HEIGHT > 0 &&
+          wallWidth > 0 && // Use state variable
+          wallHeight > 0 && // Use state variable
           availableWidth > 0 &&
           availableHeight > 0
         ) {
-          const scaleX = availableWidth / WALL_WIDTH;
-          const scaleY = availableHeight / WALL_HEIGHT;
+          const scaleX = availableWidth / wallWidth; // Use state variable
+          const scaleY = availableHeight / wallHeight; // Use state variable
           const newScale = Math.min(scaleX, scaleY); // Use the smaller scale to fit both dimensions
           setWallScale(newScale);
         } else {
@@ -726,10 +864,19 @@ const MasonryWall: React.FC = () => {
       clearTimeout(resizeTimer);
       window.removeEventListener("resize", handleResize);
     };
-  }, []); // Depends on nothing that changes internally causing re-run of this effect setup
+  }, [wallWidth, wallHeight]); // Add wallWidth and wallHeight as dependencies
 
   const getStrideColor = (strideIndex: number): string => {
     return STRIDE_COLORS[strideIndex % STRIDE_COLORS.length];
+  };
+
+  const getTextColorForBackground = (hexColor: string): string => {
+    if (!hexColor || hexColor.length < 7) return "white"; // Default for invalid
+    const r = parseInt(hexColor.slice(1, 3), 16);
+    const g = parseInt(hexColor.slice(3, 5), 16);
+    const b = parseInt(hexColor.slice(5, 7), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.5 ? "black" : "white";
   };
 
   const getStrideStartTime = (sIndex: number): number => {
@@ -784,8 +931,8 @@ const MasonryWall: React.FC = () => {
       <WallColumn ref={wallColumnRef}>
         <WallDisplayContainer
           style={{
-            width: WALL_WIDTH * wallScale,
-            height: WALL_HEIGHT * wallScale,
+            width: wallWidth * wallScale,
+            height: wallHeight * wallScale,
           }}
         >
           {allRenderableBricks.map((brick) => {
@@ -796,9 +943,9 @@ const MasonryWall: React.FC = () => {
 
             // Calculate extended hitbox dimensions (covering right head joint and top bed joint)
             const additionalWidth =
-              brick.x + brickLength < WALL_WIDTH ? HEAD_JOINT : 0;
+              brick.x + brickLength < wallWidth ? HEAD_JOINT : 0; // Use state variable
             const additionalHeight =
-              brick.y + COURSE_HEIGHT < WALL_HEIGHT
+              brick.y + COURSE_HEIGHT < wallHeight // Use state variable
                 ? COURSE_HEIGHT - BRICK_HEIGHT
                 : 0;
 
@@ -840,8 +987,8 @@ const MasonryWall: React.FC = () => {
                 {(() => {
                   const env = strideEnvelopes[currentHighlightStrideIndex];
                   const segments = [] as React.ReactElement[];
-                  const wallWidthPx = WALL_WIDTH * wallScale;
-                  const wallHeightPx = WALL_HEIGHT * wallScale;
+                  const wallWidthPx = wallWidth * wallScale; // Use state variable
+                  const wallHeightPx = wallHeight * wallScale; // Use state variable
                   const envLeftPx = env.minX * wallScale;
                   const envBottomPx = env.minY * wallScale;
                   const envWidthPx = ROBOT_WIDTH * wallScale;
@@ -923,6 +1070,7 @@ const MasonryWall: React.FC = () => {
           <h2>Masonry Wall Builder</h2>
           <p>
             Wall: {WALL_WIDTH}mm × {WALL_HEIGHT}mm | Strides: {strides.length} |
+            Wall: {wallWidth}mm × {wallHeight}mm | Strides: {strides.length} |
             Total Bricks: {allBricksRef.current.length} | Placed:{" "}
             {allRenderableBricks.length} | Bond:{" "}
             {currentBondType.charAt(0).toUpperCase() + currentBondType.slice(1)}
@@ -954,29 +1102,130 @@ const MasonryWall: React.FC = () => {
         <DebugSection>
           <h4>Wall Settings:</h4>
           <div style={{ marginBottom: "10px" }}>
+            <label>Wall Width (mm): </label>
+            <DebugInput
+              type="number"
+              value={wallWidth}
+              onChange={(e) =>
+                setWallWidth(
+                  Math.max(100, Math.round(Number(e.target.value) / 100) * 100)
+                )
+              }
+              step={100}
+            />
+          </div>
+          <div style={{ marginBottom: "10px" }}>
+            <label>Wall Height (mm): </label>
+            <DebugInput
+              type="number"
+              value={wallHeight}
+              onChange={(e) =>
+                setWallHeight(
+                  Math.max(
+                    COURSE_HEIGHT,
+                    Math.round(Number(e.target.value) / COURSE_HEIGHT) *
+                      COURSE_HEIGHT
+                  )
+                )
+              }
+              step={COURSE_HEIGHT}
+            />
+          </div>
+          <div style={{ marginBottom: "10px" }}>
             <label>Bond Type: </label>
-            <button
-              onClick={() => setCurrentBondType("stretcher")}
-              disabled={currentBondType === "stretcher"}
-              style={{ marginLeft: "5px", marginRight: "5px" }}
-            >
-              Stretcher
-            </button>
-            <button
-              onClick={() => setCurrentBondType("english_cross")}
-              disabled={currentBondType === "english_cross"}
-            >
-              English Cross
-            </button>
+            {/* Basic button styling for active/inactive states */}
+            {(["stretcher", "english_cross", "flemish"] as BondType[]).map(
+              (bond) => (
+                <button
+                  key={bond}
+                  onClick={() => setCurrentBondType(bond)}
+                  disabled={currentBondType === bond}
+                  style={{
+                    marginLeft: "5px",
+                    marginRight: "5px",
+                    padding: "5px 10px",
+                    cursor: "pointer",
+                    backgroundColor:
+                      currentBondType === bond ? "#007bff" : "#555",
+                    color: "white",
+                    border:
+                      currentBondType === bond
+                        ? "1px solid #0056b3"
+                        : "1px solid #333",
+                    borderRadius: "3px",
+                  }}
+                >
+                  {bond.charAt(0).toUpperCase() + bond.slice(1)}
+                </button>
+              )
+            )}
           </div>
         </DebugSection>
 
         {hoveredBrick ? (
           <HoverInfoBox>
-            <h4 style={{ marginTop: 0, textAlign: "center" }}>
+            <h4
+              style={{
+                marginTop: 0,
+                marginBottom: "15px",
+                textAlign: "center",
+              }}
+            >
               Brick #{hoveredBrick.strideIndex + 1}.
               {hoveredBrick.orderInStride + 1}:
             </h4>
+            <div
+              style={{
+                position: "relative",
+                width: hoveredBrick.length * wallScale + 4, // +4 for border
+                height: BRICK_HEIGHT * wallScale + 4, // +4 for border
+                margin: "20px auto 30px auto", // Increased margin for BL/TR text
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  left: "2px",
+                  bottom: "2px",
+                  width: hoveredBrick.length * wallScale,
+                  height: BRICK_HEIGHT * wallScale,
+                  border: `2px solid ${getStrideColor(
+                    hoveredBrick.strideIndex
+                  )}`,
+                  backgroundColor: "transparent",
+                  boxSizing: "border-box",
+                }}
+              />
+              <p
+                style={{
+                  position: "absolute",
+                  bottom: "-20px", // Adjusted for visibility
+                  left: "0px",
+                  fontSize: "12px",
+                  margin: 0,
+                  color: "#aaa", // Lighter color for coordinate text
+                }}
+              >
+                BL: {hoveredBrick.x.toFixed(1)}, {hoveredBrick.y.toFixed(1)}
+              </p>
+              <p
+                style={{
+                  position: "absolute",
+                  top: "-20px", // Adjusted for visibility
+                  right: "0px",
+                  fontSize: "12px",
+                  margin: 0,
+                  color: "#aaa", // Lighter color for coordinate text
+                }}
+              >
+                TR: {(hoveredBrick.x + hoveredBrick.length).toFixed(1)},{" "}
+                {(hoveredBrick.y + BRICK_HEIGHT).toFixed(1)}
+              </p>
+            </div>
+            <p>
+              <strong>Type:</strong> {hoveredBrick.type} (L:{" "}
+              {hoveredBrick.length.toFixed(0)}mm)
+            </p>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <p style={{ textAlign: "left" }}>
                 <strong>BL:</strong> ({hoveredBrick.x.toFixed(1)},{" "}
@@ -1022,7 +1271,10 @@ const MasonryWall: React.FC = () => {
                 onMouseLeave={() => setHoveredStrideFromList(null)}
               >
                 <div>
-                  <StrideColorSwatch bgColor={getStrideColor(index)}>
+                  <StrideColorSwatch
+                    bgColor={getStrideColor(index)}
+                    textColor={getTextColorForBackground(getStrideColor(index))}
+                  >
                     {index + 1}
                   </StrideColorSwatch>
                   <span>{stride.length} bricks</span>
