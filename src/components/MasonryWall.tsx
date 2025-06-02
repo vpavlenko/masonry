@@ -26,7 +26,7 @@ const STRIDE_COLORS = [
   "#787878", // gray
   "#03B9D5", // aqua
   "#ff7328", // orange
-  "#ff0", // yellow
+  "#ffff00", // yellow
   "#0000FF", // blue
   "#fc8eac", // pink
 ];
@@ -65,14 +65,6 @@ const DebugColumn = styled.div`
   }
   label {
     color: #f0f0f0; // Light text for labels
-  }
-`;
-
-const WallHeader = styled.div`
-  margin-bottom: 20px;
-  h2,
-  p {
-    color: #f0f0f0; // Light text for wall header
   }
 `;
 
@@ -120,14 +112,19 @@ const BrickDiv = styled.div<{
   justify-content: center;
   font-size: ${(props) => props.fontSize}px;
   font-weight: ${(props) => (props.isDirectlyHovered ? "bold" : "normal")};
-  color: ${(props) => (props.isHoveredStrideBrick ? "white" : "#444")};
+  color: ${(props) =>
+    props.isHoveredStrideBrick
+      ? props.isDirectlyHovered
+        ? "white"
+        : "#ccc"
+      : "#444"};
   box-sizing: border-box;
   cursor: pointer;
   overflow: hidden;
 
   box-shadow: ${(props) =>
     props.isHoveredStrideBrick
-      ? `inset 0 0 0 3px ${props.borderColor}` // Thicker border inwards (2px border + 3px inset shadow)
+      ? `inset 0 0 0 2px ${props.borderColor}` // Thicker border inwards (2px border + 3px inset shadow)
       : "none"};
 `;
 
@@ -135,7 +132,6 @@ const DebugSection = styled.div`
   margin-bottom: 20px;
   h4 {
     margin-top: 0;
-    margin-left: 20px;
     margin-bottom: 8px; // Reduced margin-bottom for h4
     color: #fff; // Ensure h4 inside DebugSection is also inverted
   }
@@ -213,36 +209,6 @@ const HoverInfoBox = styled.div`
   }
 `;
 
-const StrideStatItem = styled.div`
-  margin-bottom: 8px; // Increased spacing
-  font-size: 12px;
-  display: flex;
-  align-items: center; // Changed to single line layout
-  padding-bottom: 8px;
-  border-bottom: 1px solid #eee; // Separator for items
-  color: #f0f0f0; // Default text color for item
-  border-bottom: 1px solid #333; // Inverted style
-
-  &:last-child {
-    border-bottom: none;
-  }
-
-  span.label {
-    // For labels like "Time:"
-    font-weight: bold;
-    margin-right: 8px;
-    color: #aaa; // Inverted style
-  }
-  span.coords {
-    font-family: monospace;
-    color: #ddd; // Inverted style
-    margin-right: 15px;
-  }
-  span.time {
-    margin-right: 15px;
-  }
-`;
-
 const StrideColorSwatch = styled.span<{ bgColor: string; textColor: string }>`
   background-color: ${(props) => props.bgColor};
   color: white; // Text on swatch
@@ -311,18 +277,21 @@ const WallOverlaySegment = styled.div<{
   z-index: 4; // Just below the envelope border (5) and bricks (default)
 `;
 
+// Full-pane overlay; centres itself in the wall column, not the scaled wall
 const LoadingOverlay = styled.div`
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   background-color: rgba(0, 0, 0, 0.7);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  padding: 20px;
   border-radius: 4px;
+  pointer-events: none;
 `;
 
 const Spinner = styled.div`
@@ -332,6 +301,7 @@ const Spinner = styled.div`
   border-top: 4px solid #fff;
   border-radius: 50%;
   animation: spin 1s linear infinite;
+  margin: 0 auto; // Horizontally centers the spinner
 
   @keyframes spin {
     0% {
@@ -348,6 +318,47 @@ const LoadingText = styled.div`
   margin-top: 16px;
   font-size: 14px;
   text-align: center;
+`;
+
+const StrideTableHeader = styled.div`
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: bold;
+  color: #bbb;
+  border-bottom: 2px solid #444;
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+`;
+
+const StrideTableRow = styled.div`
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid #333;
+  color: #f0f0f0;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  &.brick-hovered {
+    background-color: rgba(255, 255, 255, 0.08);
+    /* border-left: 3px solid #007bff; */
+    /* padding-left: 1px; */ /* Adjust padding to account for border */
+  }
+`;
+
+const StrideTableCell = styled.div<{ width: string }>`
+  width: ${(props) => props.width};
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
 `;
 
 const MasonryWall: React.FC = () => {
@@ -369,6 +380,7 @@ const MasonryWall: React.FC = () => {
   const [robotHeight, setRobotHeight] = useState<number>(ROBOT_HEIGHT);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const wallColumnRef = useRef<HTMLDivElement>(null);
+  const strideStatsRef = useRef<HTMLDivElement>(null);
   const allBricksRef = useRef<Brick[]>([]); // To store the initial grid of all bricks
 
   useEffect(() => {
@@ -519,22 +531,22 @@ const MasonryWall: React.FC = () => {
 
   return (
     <AppContainer>
-      <WallColumn ref={wallColumnRef}>
+      {/* Make column a positioned ancestor so the overlay can sit dead-centre */}
+      <WallColumn ref={wallColumnRef} style={{ position: "relative" }}>
+        {isRecalculating && (
+          <LoadingOverlay>
+            <div>
+              <Spinner />
+              <LoadingText>Recalculating wall layout...</LoadingText>
+            </div>
+          </LoadingOverlay>
+        )}
         <WallDisplayContainer
           style={{
             width: wallWidth * wallScale,
             height: wallHeight * wallScale,
           }}
         >
-          {isRecalculating && (
-            <LoadingOverlay>
-              <div>
-                <Spinner />
-                <LoadingText>Recalculating wall layout...</LoadingText>
-              </div>
-            </LoadingOverlay>
-          )}
-
           {!isRecalculating &&
             allRenderableBricks.map((brick) => {
               const brickLength = brick.length; // Use actual brick length
@@ -574,7 +586,7 @@ const MasonryWall: React.FC = () => {
                     width={visualWidth}
                     height={visualHeight}
                     borderColor={getStrideColor(brick.strideIndex)}
-                    fontSize={Math.max(8, BRICK_HEIGHT * wallScale * 0.7)}
+                    fontSize={Math.max(8, BRICK_HEIGHT * wallScale * 0.56)}
                     isHoveredStrideBrick={isHighlightedStride}
                     isDirectlyHovered={hoveredBrick?.id === brick.id}
                     style={{ pointerEvents: "none" }} // hitbox captures events
@@ -673,12 +685,7 @@ const MasonryWall: React.FC = () => {
       </WallColumn>
 
       <DebugColumn>
-        <WallHeader>
-          <h2>Masonry Wall Builder</h2>
-        </WallHeader>
-
         <DebugSection>
-          <h4>Bond Type</h4>
           <div style={{ marginBottom: "10px" }}>
             {/* Basic button styling for active/inactive states */}
             {(["stretcher", "english_cross", "flemish"] as BondType[]).map(
@@ -715,7 +722,7 @@ const MasonryWall: React.FC = () => {
         <DebugSection>
           <h4>Robot Timings</h4>
           <InputGroup>
-            <label>Reposition within stride </label>
+            <label>Single brick </label>
             <DebugInput
               type="number"
               value={repositionTime}
@@ -736,7 +743,7 @@ const MasonryWall: React.FC = () => {
             />
           </InputGroup>
           <InputGroup>
-            <label>Robot reposition </label>
+            <label>To next stride </label>
             <DebugInput
               type="number"
               value={robotRepositionTime}
@@ -759,9 +766,9 @@ const MasonryWall: React.FC = () => {
         </DebugSection>
 
         <DebugSection>
-          <h4>Wall Settings</h4>
+          <h4>Wall</h4>
           <InputGroup>
-            <label>Wall Width </label>
+            <label>Width </label>
             <DebugInput
               type="number"
               value={wallWidth}
@@ -787,7 +794,7 @@ const MasonryWall: React.FC = () => {
             />
           </InputGroup>
           <InputGroup>
-            <label>Wall Height </label>
+            <label>Height </label>
             <DebugInput
               type="number"
               value={wallHeight}
@@ -823,9 +830,9 @@ const MasonryWall: React.FC = () => {
         </DebugSection>
 
         <DebugSection>
-          <h4>Envelope Settings</h4>
+          <h4>Envelope</h4>
           <InputGroup>
-            <label>Envelope Width </label>
+            <label>Width </label>
             <DebugInput
               type="number"
               value={robotWidth}
@@ -851,7 +858,7 @@ const MasonryWall: React.FC = () => {
             />
           </InputGroup>
           <InputGroup>
-            <label>Envelope Height </label>
+            <label>Height </label>
             <DebugInput
               type="number"
               value={robotHeight}
@@ -997,10 +1004,6 @@ const MasonryWall: React.FC = () => {
               </div>
             </div>
             <p>
-              <strong>Stride start time</strong>{" "}
-              {formatTime(getStrideStartTime(hoveredBrick.strideIndex))}
-            </p>
-            <p>
               <strong>Brick build time</strong>{" "}
               {formatTime(calculateBrickTime(hoveredBrick))} -{" "}
               {formatTime(calculateBrickTime(hoveredBrick) + repositionTime)}
@@ -1012,8 +1015,16 @@ const MasonryWall: React.FC = () => {
           </HoverInfoBox>
         )}
 
-        <StrideStatsContainer>
+        <StrideStatsContainer ref={strideStatsRef}>
           <h4>Stride Order ({strides.length} total)</h4>
+
+          <StrideTableHeader>
+            <StrideTableCell width="60px">#</StrideTableCell>
+            <StrideTableCell width="70px"># Bricks</StrideTableCell>
+            <StrideTableCell width="110px">Envelope Start (mm)</StrideTableCell>
+            <StrideTableCell width="120px">Bricklaying Time</StrideTableCell>
+          </StrideTableHeader>
+
           {strides.map((stride, index) => {
             if (!strideEnvelopes[index]) return null; // Guard against missing envelope data
 
@@ -1023,26 +1034,39 @@ const MasonryWall: React.FC = () => {
             const calculatedStrideEndTime =
               calculatedStrideStartTime + strideBricklayingDuration;
 
+            const isBrickHovered =
+              hoveredBrick && hoveredBrick.strideIndex === index;
+
             return (
-              <StrideStatItem
+              <StrideTableRow
                 key={index}
+                data-stride-index={index}
+                className={isBrickHovered ? "brick-hovered" : ""}
                 onMouseEnter={() => setHoveredStrideFromList(index)}
                 onMouseLeave={() => setHoveredStrideFromList(null)}
               >
-                <StrideColorSwatch
-                  bgColor={getStrideColor(index)}
-                  textColor={getTextColorForBackground(getStrideColor(index))}
-                >
-                  {index + 1}
-                </StrideColorSwatch>
-                <span>{stride.length} bricks</span>
-                <div style={{ paddingLeft: "2em" }}>
-                  env: x = {strideEnvelopes[index].minX.toFixed(0)} mm, y ={" "}
-                  {strideEnvelopes[index].minY.toFixed(0)} mm, time:{" "}
-                  {formatTime(calculatedStrideStartTime)} -{" "}
-                  {formatTime(calculatedStrideEndTime)}
-                </div>
-              </StrideStatItem>
+                <StrideTableCell width="60px">
+                  <StrideColorSwatch
+                    bgColor={getStrideColor(index)}
+                    textColor={getTextColorForBackground(getStrideColor(index))}
+                  >
+                    {index + 1}
+                  </StrideColorSwatch>
+                </StrideTableCell>
+                <StrideTableCell width="70px">{stride.length}</StrideTableCell>
+                <StrideTableCell width="110px">
+                  <span style={{ fontFamily: "monospace", fontSize: "11px" }}>
+                    {strideEnvelopes[index].minX.toFixed(0)},{" "}
+                    {strideEnvelopes[index].minY.toFixed(0)}
+                  </span>
+                </StrideTableCell>
+                <StrideTableCell width="120px">
+                  <span style={{ fontSize: "11px" }}>
+                    {formatTime(calculatedStrideStartTime)} -{" "}
+                    {formatTime(calculatedStrideEndTime)}
+                  </span>
+                </StrideTableCell>
+              </StrideTableRow>
             );
           })}
           {strides.length === 0 && <p>No strides calculated yet.</p>}
