@@ -243,6 +243,9 @@ const StrideColorSwatch = styled.span<{ bgColor: string }>`
   text-align: center;
 `;
 
+const BORDER_WIDTH_PX = 3;
+const OVERLAY_COLOR_STR = "rgba(0, 0, 0, 0.5)";
+
 const StrideEnvelopeDiv = styled.div<{
   left: number;
   bottom: number;
@@ -259,7 +262,13 @@ const StrideEnvelopeDiv = styled.div<{
   pointer-events: none;
   z-index: 5;
   box-sizing: border-box;
-  border: 3px dotted ${(props) => props.strideColor};
+  // Outer part of the border uses the overlay color
+  border: ${BORDER_WIDTH_PX}px solid ${OVERLAY_COLOR_STR};
+  // Inner part of the border uses the strideColor, achieved with an inset shadow
+  // This shadow is drawn on top of the inner part of the 'border' defined above.
+  // If BORDER_WIDTH_PX is 3, inner 2px are strideColor, outer 1px is OVERLAY_COLOR_STR.
+  box-shadow: inset 0 0 0 ${Math.round(BORDER_WIDTH_PX * 0.66)}px
+    ${(props) => props.strideColor};
 `;
 
 const StrideStatsContainer = styled.div`
@@ -775,15 +784,17 @@ const MasonryWall: React.FC = () => {
             strideEnvelopes[currentHighlightStrideIndex] && (
               <StrideEnvelopeDiv
                 left={
-                  (strideEnvelopes[currentHighlightStrideIndex].minX - 2) *
-                  wallScale
+                  strideEnvelopes[currentHighlightStrideIndex].minX *
+                    wallScale -
+                  BORDER_WIDTH_PX
                 }
                 bottom={
-                  (strideEnvelopes[currentHighlightStrideIndex].minY - 2) *
-                  wallScale
+                  strideEnvelopes[currentHighlightStrideIndex].minY *
+                    wallScale -
+                  BORDER_WIDTH_PX
                 }
-                width={(ROBOT_WIDTH + 4) * wallScale}
-                height={(ROBOT_HEIGHT + 4) * wallScale}
+                width={ROBOT_WIDTH * wallScale + 2 * BORDER_WIDTH_PX}
+                height={ROBOT_HEIGHT * wallScale + 2 * BORDER_WIDTH_PX}
                 strideColor={getStrideColor(currentHighlightStrideIndex)}
               />
             )}
