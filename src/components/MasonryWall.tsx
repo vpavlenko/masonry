@@ -43,18 +43,22 @@ type Stride = Brick[];
 // Stride colors - red, blue, orange, green, purple, aqua, lime, then contrasting colors
 const STRIDE_COLORS = [
   "#FFFFFF",
-  "#820000", // toma to
+
   "#FF0000",
-  "#007000",
+
   "#00FB47",
   "#9500B3",
-  "#EA7EFF",
+
   "#787878",
-  "#0000FF",
+
   "#03B9D5",
   "#ff7328",
   "#ff0",
   "#0000FF",
+  "#007000",
+  "#0000FF",
+  "#EA7EFF",
+  "#820000", // toma to
   "#FF0000", // red
   "#FFA500", // orange
   "#008000", // green
@@ -175,7 +179,7 @@ const BrickDiv = styled.div<{
   justify-content: center;
   font-size: ${(props) => props.fontSize}px;
   font-weight: ${(props) => (props.isDirectlyHovered ? "bold" : "normal")};
-  color: white; // 3. Text color inside brick to white
+  color: ${(props) => (props.isHoveredStrideBrick ? "white" : "gray")};
   box-sizing: border-box;
   cursor: pointer;
   overflow: hidden;
@@ -358,6 +362,8 @@ const MasonryWall: React.FC = () => {
   const [currentBondType, setCurrentBondType] = useState<BondType>("stretcher"); // New state for bond type
   const [wallWidth, setWallWidth] = useState(2300); // Default WALL_WIDTH
   const [wallHeight, setWallHeight] = useState(2000); // Default WALL_HEIGHT
+  const [robotWidth, setRobotWidth] = useState<number>(ROBOT_WIDTH);
+  const [robotHeight, setRobotHeight] = useState<number>(ROBOT_HEIGHT);
   const wallColumnRef = useRef<HTMLDivElement>(null);
   const allBricksRef = useRef<Brick[]>([]); // To store the initial grid of all bricks
 
@@ -676,7 +682,9 @@ const MasonryWall: React.FC = () => {
     };
 
     const calculateWallStrides = (
-      allWallBricks: readonly Brick[]
+      allWallBricks: readonly Brick[],
+      envWidth: number,
+      envHeight: number
     ): {
       strides: Stride[];
       envelopes: Record<number, StrideMeta>;
@@ -692,23 +700,43 @@ const MasonryWall: React.FC = () => {
         );
         if (unplacedBricks.length === 0) break;
 
-        const candidateRobotStartXSet = new Set<number>();
-        allWallBricks.forEach((brick) => {
-          const candidate1 = Math.max(
-            0,
-            Math.min(brick.x, wallWidth - ROBOT_WIDTH) // Use state variable
-          );
-          candidateRobotStartXSet.add(candidate1);
+        /* -------------------------------------------------------------------
+           1. Find the bottom-most (smallest Y) course that still contains
+              unplaced bricks and use that Y as the only allowed
+              envelope-bottom for the next stride.
+           ------------------------------------------------------------------- */
+        const bottomMostY = unplacedBricks.reduce(
+          (min, b) => Math.min(min, b.y),
+          Infinity
+        );
 
-          const candidate2 = Math.max(
-            0,
-            Math.min(
-              brick.x + brick.length - ROBOT_WIDTH,
-              wallWidth - ROBOT_WIDTH // Use state variable
-            )
-          );
-          candidateRobotStartXSet.add(candidate2);
-        });
+        /* -------------------------------------------------------------------
+           2. Build the candidate X positions *only* from the bricks that are
+              on that bottom-most course.  Each brick yields two start-X
+              options: one where the envelope's left edge touches the brick's
+              left edge, and one where it touches the brick's right edge.
+           ------------------------------------------------------------------- */
+        const candidateRobotStartXSet = new Set<number>();
+
+        unplacedBricks
+          .filter((b) => b.y === bottomMostY)
+          .forEach((brick) => {
+            // Option A – envelope starts at (or before wall origin) so that
+            // the brick's left edge is inside the envelope.
+            const candidate1 = Math.max(
+              0,
+              Math.min(brick.x, wallWidth - envWidth)
+            );
+            candidateRobotStartXSet.add(candidate1);
+
+            // Option B – envelope shifted right so that the brick's right edge
+            // is flush with the envelope's right edge.
+            const candidate2 = Math.max(
+              0,
+              Math.min(brick.x + brick.length - envWidth, wallWidth - envWidth)
+            );
+            candidateRobotStartXSet.add(candidate2);
+          });
 
         const candidateRobotStartXPositions = Array.from(
           candidateRobotStartXSet
@@ -722,35 +750,25 @@ const MasonryWall: React.FC = () => {
         };
 
         for (const candidateStartX of candidateRobotStartXPositions) {
+          const candidateStartY = bottomMostY; // enforce bottom-most course
+
           const horizontallyReachableUnplaced = unplacedBricks.filter((b) => {
             return (
               b.x >= candidateStartX &&
-              b.x + b.length <= candidateStartX + ROBOT_WIDTH
+              b.x + b.length <= candidateStartX + envWidth &&
+              b.y >= candidateStartY &&
+              b.y + BRICK_HEIGHT <= candidateStartY + envHeight
             );
           });
 
-          if (horizontallyReachableUnplaced.length === 0) continue;
-
-          const candidateStartY = horizontallyReachableUnplaced.reduce(
-            (minY, b) => Math.min(minY, b.y),
-            Infinity
-          );
-
           const tempCurrentStrideAttempt: Brick[] = [];
 
-          const potentialBricksForOption = unplacedBricks
-            .filter((b) => {
-              return (
-                b.x >= candidateStartX &&
-                b.x + b.length <= candidateStartX + ROBOT_WIDTH &&
-                b.y >= candidateStartY &&
-                b.y + BRICK_HEIGHT <= candidateStartY + ROBOT_HEIGHT
-              );
-            })
-            .sort((a, b) => {
+          const potentialBricksForOption = horizontallyReachableUnplaced.sort(
+            (a, b) => {
               if (a.y !== b.y) return a.y - b.y;
               return a.x - b.x;
-            });
+            }
+          );
 
           for (const potentialBrick of potentialBricksForOption) {
             if (
@@ -776,22 +794,16 @@ const MasonryWall: React.FC = () => {
         }
 
         if (bestStrideOption.count <= 0) {
-          const overallLowestUnplacedBrick = unplacedBricks.sort((a, b) => {
-            if (a.y !== b.y) return a.y - b.y;
-            return a.x - b.x;
-          })[0];
-
-          if (overallLowestUnplacedBrick) {
-            console.warn(
-              `Could not place brick ${overallLowestUnplacedBrick.id} (type: ${overallLowestUnplacedBrick.type}, length: ${overallLowestUnplacedBrick.length}) in any stride, skipping it. X: ${overallLowestUnplacedBrick.x}, Y: ${overallLowestUnplacedBrick.y}`
-            );
-            globallyPlacedBrickIds.add(overallLowestUnplacedBrick.id);
-            continue;
-          }
-          console.warn(
-            "No bricks could be placed and no unplaced bricks found to skip. Breaking stride calculation."
-          );
-          break;
+          const fallbackBrick = unplacedBricks[0];
+          bestStrideOption = {
+            startX: Math.max(
+              0,
+              Math.min(fallbackBrick.x, wallWidth - envWidth)
+            ),
+            startY: fallbackBrick.y,
+            bricks: [fallbackBrick],
+            count: 1,
+          };
         }
 
         const finalCurrentStride = bestStrideOption.bricks.map((b) => ({
@@ -810,8 +822,8 @@ const MasonryWall: React.FC = () => {
           calculatedEnvelopes[strideIndexCounter] = {
             minX: bestStrideOption.startX,
             minY: bestStrideOption.startY,
-            maxX: bestStrideOption.startX + ROBOT_WIDTH,
-            maxY: bestStrideOption.startY + ROBOT_HEIGHT,
+            maxX: bestStrideOption.startX + envWidth,
+            maxY: bestStrideOption.startY + envHeight,
           };
 
           calculatedStrides.push(finalCurrentStride);
@@ -822,10 +834,10 @@ const MasonryWall: React.FC = () => {
     };
 
     const { strides: calculatedStrides, envelopes: calculatedEnvelopes } =
-      calculateWallStrides(currentAllBricks);
+      calculateWallStrides(currentAllBricks, robotWidth, robotHeight);
     setStrides(calculatedStrides);
     setStrideEnvelopes(calculatedEnvelopes);
-  }, [currentBondType, wallWidth, wallHeight]); // Added currentBondType and wallWidth/wallHeight as dependencies
+  }, [currentBondType, wallWidth, wallHeight, robotWidth, robotHeight]); // also react to envelope changes
 
   useEffect(() => {
     const updateScale = () => {
@@ -962,8 +974,12 @@ const MasonryWall: React.FC = () => {
                 bottom={brick.y * wallScale}
                 width={hitWidth}
                 height={hitHeight}
-                onMouseEnter={() => setHoveredBrick(brick)}
-                onMouseLeave={() => setHoveredBrick(null)}
+                onMouseEnter={() => {
+                  if (hoveredBrick?.id !== brick.id) setHoveredBrick(brick);
+                }}
+                onMouseLeave={() => {
+                  if (hoveredBrick?.id === brick.id) setHoveredBrick(null);
+                }}
               >
                 <BrickDiv
                   width={visualWidth}
@@ -991,8 +1007,8 @@ const MasonryWall: React.FC = () => {
                   const wallHeightPx = wallHeight * wallScale; // Use state variable
                   const envLeftPx = env.minX * wallScale;
                   const envBottomPx = env.minY * wallScale;
-                  const envWidthPx = ROBOT_WIDTH * wallScale;
-                  const envHeightPx = ROBOT_HEIGHT * wallScale;
+                  const envWidthPx = robotWidth * wallScale;
+                  const envHeightPx = robotHeight * wallScale;
 
                   // Bottom overlay
                   if (envBottomPx > 0) {
@@ -1057,8 +1073,8 @@ const MasonryWall: React.FC = () => {
                 bottom={
                   strideEnvelopes[currentHighlightStrideIndex].minY * wallScale
                 }
-                width={ROBOT_WIDTH * wallScale}
-                height={ROBOT_HEIGHT * wallScale}
+                width={robotWidth * wallScale}
+                height={robotHeight * wallScale}
                 strideColor={getStrideColor(currentHighlightStrideIndex)}
               />
             )}
@@ -1159,6 +1175,35 @@ const MasonryWall: React.FC = () => {
                 </button>
               )
             )}
+          </div>
+        </DebugSection>
+        <DebugSection>
+          <h4>Envelope Settings:</h4>
+          <div style={{ marginBottom: "10px" }}>
+            <label>Envelope Width (mm): </label>
+            <DebugInput
+              type="number"
+              value={robotWidth}
+              onChange={(e) =>
+                setRobotWidth(
+                  Math.max(100, Math.round(Number(e.target.value) / 100) * 100)
+                )
+              }
+              step={100}
+            />
+          </div>
+          <div style={{ marginBottom: "10px" }}>
+            <label>Envelope Height (mm): </label>
+            <DebugInput
+              type="number"
+              value={robotHeight}
+              onChange={(e) =>
+                setRobotHeight(
+                  Math.max(100, Math.round(Number(e.target.value) / 100) * 100)
+                )
+              }
+              step={100}
+            />
           </div>
         </DebugSection>
 
