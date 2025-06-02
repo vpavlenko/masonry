@@ -150,11 +150,9 @@ const BrickDiv = styled.div<{
   bottom: 0;
   width: ${(props) => props.width}px;
   height: ${(props) => props.height}px;
-  border: ${(props) =>
-    props.isHoveredStrideBrick
-      ? `4px solid ${props.borderColor}`
-      : `2px solid ${props.borderColor}`};
-  background-color: transparent;
+  border: 2px solid ${(props) => props.borderColor};
+  background-color: ${(props) =>
+    props.isHoveredStrideBrick ? "#333" : "transparent"};
   display: flex;
   align-items: center;
   justify-content: center;
@@ -163,10 +161,17 @@ const BrickDiv = styled.div<{
   color: white; // 3. Text color inside brick to white
   box-sizing: border-box;
   cursor: pointer;
-  transition: background-color 0.2s ease-in-out;
+  transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out; // Added box-shadow to transition
+
+  box-shadow: ${(props) =>
+    props.isHoveredStrideBrick
+      ? `inset 0 0 0 3px ${props.borderColor}` // Thicker border inwards (2px border + 3px inset shadow)
+      : "none"};
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.1); // Slight hover effect
+    // General hover slightly lightens non-active bricks, active ones are handled by isHoveredStrideBrick
+    background-color: ${(props) =>
+      props.isHoveredStrideBrick ? "#333" : "rgba(255, 255, 255, 0.1)"};
   }
 `;
 
@@ -244,7 +249,7 @@ const StrideColorSwatch = styled.span<{ bgColor: string }>`
 `;
 
 const BORDER_WIDTH_PX = 3;
-const OVERLAY_COLOR_STR = "rgba(0, 0, 0, 0.5)";
+// const OVERLAY_COLOR_STR = "rgba(0, 0, 0, 0.5)"; // No longer used
 
 const StrideEnvelopeDiv = styled.div<{
   left: number;
@@ -258,16 +263,11 @@ const StrideEnvelopeDiv = styled.div<{
   bottom: ${(props) => props.bottom}px;
   width: ${(props) => props.width}px;
   height: ${(props) => props.height}px;
-  background-image: none;
   pointer-events: none;
   z-index: 5;
   box-sizing: border-box;
-  // Outer part of the border uses the overlay color
-  border: ${BORDER_WIDTH_PX}px solid ${OVERLAY_COLOR_STR};
-  // Inner part of the border uses the strideColor, achieved with an inset shadow
-  // This shadow is drawn on top of the inner part of the 'border' defined above.
-  // If BORDER_WIDTH_PX is 3, inner 2px are strideColor, outer 1px is OVERLAY_COLOR_STR.
-  box-shadow: inset 0 0 0 ${Math.round(BORDER_WIDTH_PX * 0.66)}px
+  // New outward blurred shadow using strideColor
+  box-shadow: 0 0 ${BORDER_WIDTH_PX * 3}px ${BORDER_WIDTH_PX}px
     ${(props) => props.strideColor};
 `;
 
@@ -784,17 +784,13 @@ const MasonryWall: React.FC = () => {
             strideEnvelopes[currentHighlightStrideIndex] && (
               <StrideEnvelopeDiv
                 left={
-                  strideEnvelopes[currentHighlightStrideIndex].minX *
-                    wallScale -
-                  BORDER_WIDTH_PX
+                  strideEnvelopes[currentHighlightStrideIndex].minX * wallScale
                 }
                 bottom={
-                  strideEnvelopes[currentHighlightStrideIndex].minY *
-                    wallScale -
-                  BORDER_WIDTH_PX
+                  strideEnvelopes[currentHighlightStrideIndex].minY * wallScale
                 }
-                width={ROBOT_WIDTH * wallScale + 2 * BORDER_WIDTH_PX}
-                height={ROBOT_HEIGHT * wallScale + 2 * BORDER_WIDTH_PX}
+                width={ROBOT_WIDTH * wallScale}
+                height={ROBOT_HEIGHT * wallScale}
                 strideColor={getStrideColor(currentHighlightStrideIndex)}
               />
             )}
