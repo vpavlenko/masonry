@@ -25,6 +25,14 @@ interface Brick {
   id: string;
 }
 
+interface StrideMeta {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  // We might not need actual bricks here if we just need bounds for visualization
+}
+
 type Stride = Brick[];
 
 // Stride colors - red, blue, orange, green, purple, aqua, lime, then contrasting colors
@@ -86,6 +94,8 @@ const DebugColumn = styled.div`
   padding: 15px;
   overflow-y: auto;
   color: #333; // Default text color for debug panel
+  display: flex;
+  flex-direction: column; // To allow fixed positioning of elements at bottom
 
   h3,
   h4 {
@@ -100,14 +110,15 @@ const WallHeader = styled.div`
   margin-bottom: 20px;
   h2,
   p {
-    color: #ccc; // Light color for text on dark background if body is dark
+    color: #333; // Changed from #ccc as it's now on a light background
   }
 `;
 
 const WallDisplayContainer = styled.div`
   position: relative;
   // width and height are set dynamically via inline style based on wallScale
-  // No margin: 0 auto;
+  background-color: #000; // 3. Set background to black
+  margin: auto; // Center the wall if space allows after scaling
 `;
 
 const BrickDiv = styled.div<{
@@ -130,7 +141,7 @@ const BrickDiv = styled.div<{
   justify-content: center;
   font-size: ${(props) => props.fontSize}px;
   font-weight: bold;
-  color: #333; // Number color inside brick
+  color: white; // 3. Text color inside brick to white
   box-sizing: border-box;
   cursor: pointer;
   transition: background-color 0.2s ease-in-out;
@@ -159,6 +170,8 @@ const HoverInfoBox = styled.div`
   background-color: white;
   padding: 10px;
   border-radius: 5px;
+  border: 1px solid #ddd; // Added a subtle border
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); // Added a subtle shadow
   p {
     margin: 5px 0;
     font-size: 14px;
@@ -166,6 +179,7 @@ const HoverInfoBox = styled.div`
   strong {
     color: #555;
   }
+  text-align: center;
 `;
 
 const StrideStatItem = styled.div`
@@ -186,8 +200,44 @@ const StrideColorSwatch = styled.span<{ bgColor: string }>`
   text-align: center;
 `;
 
+const StrideEnvelopeDiv = styled.div<{
+  left: number;
+  bottom: number;
+  width: number;
+  height: number;
+  strideColor: string;
+}>`
+  position: absolute;
+  left: ${(props) => props.left}px;
+  bottom: ${(props) => props.bottom}px;
+  width: ${(props) => props.width}px;
+  height: ${(props) => props.height}px;
+  background-image: ${(props) =>
+    `repeating-linear-gradient(45deg, transparent, transparent 5px, ${props.strideColor}55 5px, ${props.strideColor}55 10px)`}; // Hatching with transparency
+  pointer-events: none; // So it doesn't interfere with brick hover
+  z-index: 5; // Ensure it's above bricks but potentially below other UI if needed
+  box-sizing: border-box;
+  border: 1px dashed ${(props) => props.strideColor};
+`;
+
+const StrideStatsContainer = styled.div`
+  margin-top: auto; // Pushes this to the bottom if DebugColumn is flex-direction: column
+  max-height: 30%; // As per "bottom 30% of right pane" - can be adjusted
+  overflow-y: auto;
+  border: 1px solid #ccc;
+  padding: 10px;
+  background-color: #f9f9f9; // Slightly different background for distinction
+  h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+  }
+`;
+
 const MasonryWall: React.FC = () => {
   const [strides, setStrides] = useState<Stride[]>([]);
+  const [strideEnvelopes, setStrideEnvelopes] = useState<
+    Record<number, StrideMeta>
+  >({});
   const [hoveredBrick, setHoveredBrick] = useState<Brick | null>(null);
   const [repositionTime, setRepositionTime] = useState(10);
   const [robotRepositionTime, setRobotRepositionTime] = useState(600);
@@ -320,8 +370,12 @@ const MasonryWall: React.FC = () => {
       return totalActualSupportLength >= requiredSupportLength;
     };
 
-    const calculateWallStrides = (): Stride[] => {
+    const calculateWallStrides = (): {
+      strides: Stride[];
+      envelopes: Record<number, StrideMeta>;
+    } => {
       const calculatedStrides: Stride[] = [];
+      const calculatedEnvelopes: Record<number, StrideMeta> = {};
       const globallyPlacedBrickIds = new Set<string>();
       let strideIndexCounter = 0;
 
@@ -423,15 +477,29 @@ const MasonryWall: React.FC = () => {
           ...b,
         })); // Work with copies
 
-        finalCurrentStride.forEach((b) => {
-          b.strideIndex = strideIndexCounter;
-          globallyPlacedBrickIds.add(b.id);
-        });
-        finalCurrentStride.forEach((brick, order) => {
-          brick.orderInStride = order;
-        });
-
         if (finalCurrentStride.length > 0) {
+          // Calculate envelope only if stride is non-empty
+          let minX = Infinity,
+            minY = Infinity,
+            maxX = -Infinity,
+            maxY = -Infinity;
+
+          finalCurrentStride.forEach((b) => {
+            b.strideIndex = strideIndexCounter;
+            globallyPlacedBrickIds.add(b.id);
+
+            const brickLength =
+              b.type === "full" ? FULL_BRICK_LENGTH : HALF_BRICK_LENGTH;
+            minX = Math.min(minX, b.x);
+            minY = Math.min(minY, b.y);
+            maxX = Math.max(maxX, b.x + brickLength);
+            maxY = Math.max(maxY, b.y + BRICK_HEIGHT); // Assuming BRICK_HEIGHT for the top of the brick
+          });
+          finalCurrentStride.forEach((brick, order) => {
+            brick.orderInStride = order;
+          });
+
+          calculatedEnvelopes[strideIndexCounter] = { minX, minY, maxX, maxY };
           calculatedStrides.push(finalCurrentStride);
           strideIndexCounter++;
         } else if (
@@ -442,27 +510,41 @@ const MasonryWall: React.FC = () => {
           // This part of the logic is now handled by the "count <=0" check above.
         }
       }
-      return calculatedStrides;
+      return { strides: calculatedStrides, envelopes: calculatedEnvelopes };
     };
 
-    const calculatedStrides = calculateWallStrides();
+    const { strides: calculatedStrides, envelopes: calculatedEnvelopes } =
+      calculateWallStrides();
     setStrides(calculatedStrides);
+    setStrideEnvelopes(calculatedEnvelopes);
   }, []);
 
   useEffect(() => {
     const updateScale = () => {
       if (wallColumnRef.current) {
-        const wallColumnWidth = wallColumnRef.current.offsetWidth;
+        const wallColumnElement = wallColumnRef.current;
         const padding = 40; // 20px left + 20px right padding in WallColumn
-        const availableWidthForWall = wallColumnWidth - padding;
-        if (WALL_WIDTH > 0 && availableWidthForWall > 0) {
-          const newScale = availableWidthForWall / WALL_WIDTH;
+
+        const availableWidth = wallColumnElement.offsetWidth - padding;
+        const availableHeight = wallColumnElement.offsetHeight - padding; // Assuming similar padding for height or just overall container height
+
+        if (
+          WALL_WIDTH > 0 &&
+          WALL_HEIGHT > 0 &&
+          availableWidth > 0 &&
+          availableHeight > 0
+        ) {
+          const scaleX = availableWidth / WALL_WIDTH;
+          const scaleY = availableHeight / WALL_HEIGHT;
+          const newScale = Math.min(scaleX, scaleY); // Use the smaller scale to fit both dimensions
           setWallScale(newScale);
+        } else {
+          setWallScale(0.1); // Fallback small scale
         }
       }
     };
 
-    updateScale(); // Initial scale
+    updateScale();
     // Debounced resize handler
     let resizeTimer: ReturnType<typeof setTimeout>;
     const handleResize = () => {
@@ -495,15 +577,6 @@ const MasonryWall: React.FC = () => {
   return (
     <AppContainer>
       <WallColumn ref={wallColumnRef}>
-        <WallHeader>
-          <h2>Masonry Wall Builder</h2>
-          <p>
-            Wall: {WALL_WIDTH}mm × {WALL_HEIGHT}mm | Strides: {strides.length} |
-            Total Bricks: {allBricksRef.current.length} | Placed:{" "}
-            {allRenderableBricks.length}
-          </p>
-        </WallHeader>
-
         <WallDisplayContainer
           style={{
             width: WALL_WIDTH * wallScale,
@@ -529,11 +602,37 @@ const MasonryWall: React.FC = () => {
               </BrickDiv>
             );
           })}
+          {hoveredBrick && strideEnvelopes[hoveredBrick.strideIndex] && (
+            <StrideEnvelopeDiv
+              left={strideEnvelopes[hoveredBrick.strideIndex].minX * wallScale}
+              bottom={
+                strideEnvelopes[hoveredBrick.strideIndex].minY * wallScale
+              }
+              width={
+                (strideEnvelopes[hoveredBrick.strideIndex].maxX -
+                  strideEnvelopes[hoveredBrick.strideIndex].minX) *
+                wallScale
+              }
+              height={
+                (strideEnvelopes[hoveredBrick.strideIndex].maxY -
+                  strideEnvelopes[hoveredBrick.strideIndex].minY) *
+                wallScale
+              }
+              strideColor={getStrideColor(hoveredBrick.strideIndex)}
+            />
+          )}
         </WallDisplayContainer>
       </WallColumn>
 
       <DebugColumn>
-        <h3>Debug Panel</h3>
+        <WallHeader>
+          <h2>Masonry Wall Builder</h2>
+          <p>
+            Wall: {WALL_WIDTH}mm × {WALL_HEIGHT}mm | Strides: {strides.length} |
+            Total Bricks: {allBricksRef.current.length} | Placed:{" "}
+            {allRenderableBricks.length}
+          </p>
+        </WallHeader>
         <DebugSection>
           <h4>Constants:</h4>
           <div style={{ marginBottom: "10px" }}>
@@ -565,8 +664,18 @@ const MasonryWall: React.FC = () => {
               <strong>ID:</strong> {hoveredBrick.id}
             </p>
             <p>
-              <strong>Position:</strong> ({hoveredBrick.x.toFixed(1)},{" "}
-              {hoveredBrick.y.toFixed(1)})
+              <strong>Bottom left:</strong> ({hoveredBrick.x.toFixed(1)}mm,{" "}
+              {hoveredBrick.y.toFixed(1)}mm)
+            </p>
+            <p>
+              <strong>Top right:</strong> (
+              {(
+                hoveredBrick.x +
+                (hoveredBrick.type === "full"
+                  ? FULL_BRICK_LENGTH
+                  : HALF_BRICK_LENGTH)
+              ).toFixed(1)}
+              mm, {(hoveredBrick.y + BRICK_HEIGHT).toFixed(1)}mm)
             </p>
             <p>
               <strong>Type:</strong> {hoveredBrick.type}
@@ -578,8 +687,8 @@ const MasonryWall: React.FC = () => {
               <strong>Order:</strong> {hoveredBrick.orderInStride + 1}
             </p>
             <p>
-              <strong>Build time:</strong> {calculateBrickTime(hoveredBrick)}{" "}
-              seconds
+              <strong>Build start time:</strong>{" "}
+              {calculateBrickTime(hoveredBrick)} seconds
             </p>
             <p>
               <strong>Color:</strong>
@@ -597,27 +706,18 @@ const MasonryWall: React.FC = () => {
           </HoverInfoBox>
         )}
 
-        <DebugSection style={{ marginTop: "20px" }}>
+        <StrideStatsContainer>
           <h4>Stride Statistics: ({strides.length} total)</h4>
-          <div
-            style={{
-              maxHeight: "300px",
-              overflowY: "auto",
-              border: "1px solid #ccc",
-              padding: "5px",
-            }}
-          >
-            {strides.map((stride, index) => (
-              <StrideStatItem key={index}>
-                <StrideColorSwatch bgColor={getStrideColor(index)}>
-                  {index + 1}
-                </StrideColorSwatch>
-                {stride.length} bricks
-              </StrideStatItem>
-            ))}
-            {strides.length === 0 && <p>No strides calculated yet.</p>}
-          </div>
-        </DebugSection>
+          {strides.map((stride, index) => (
+            <StrideStatItem key={index}>
+              <StrideColorSwatch bgColor={getStrideColor(index)}>
+                {index + 1}
+              </StrideColorSwatch>
+              {stride.length} bricks
+            </StrideStatItem>
+          ))}
+          {strides.length === 0 && <p>No strides calculated yet.</p>}
+        </StrideStatsContainer>
       </DebugColumn>
     </AppContainer>
   );
