@@ -1,5 +1,5 @@
 import type { Brick } from "./bondGenerator";
-import { COURSE_HEIGHT, BRICK_HEIGHT } from "./bondGenerator";
+import { COURSE_HEIGHT, BRICK_HEIGHT, HEAD_JOINT } from "./bondGenerator";
 
 export interface StrideMeta {
   minX: number; // Will represent robot's start X for the envelope
@@ -13,52 +13,42 @@ export type Stride = Brick[];
 
 /**
  * Checks if a brick has sufficient support from bricks below it
+ * Requires 100% continuous support from the layer directly below
  */
 const isBrickSupported = (
   brick: Brick,
-  globallyPlacedBricks: ReadonlySet<string>,
-  bricksAlreadyInCurrentStride: readonly Brick[],
-  allWallBricks: readonly Brick[]
+  placedBricks: readonly Brick[]
 ): boolean => {
   if (brick.y === 0) return true;
 
-  const brickEndX = brick.x + brick.length;
+  // Get all bricks in the layer directly under this brick that overlap
+  const supportingBricksBelow = placedBricks
+    .filter((supportBrick) => {
+      // Must be in the course directly below
+      if (supportBrick.y !== brick.y - COURSE_HEIGHT) return false;
 
-  const supportingBricksBelow = allWallBricks.filter(
-    (candidateSupportBrick) => {
-      if (candidateSupportBrick.y !== brick.y - COURSE_HEIGHT) return false;
-
-      const supportCandidateEndX =
-        candidateSupportBrick.x + candidateSupportBrick.length;
-      if (
-        !(candidateSupportBrick.x < brickEndX && supportCandidateEndX > brick.x)
-      )
-        return false;
-
-      const isGloballyPlaced = globallyPlacedBricks.has(
-        candidateSupportBrick.id
+      return !(
+        supportBrick.x >= brick.x + brick.length ||
+        supportBrick.x + supportBrick.length < brick.x
       );
-      const isLocallyPlaced = bricksAlreadyInCurrentStride.some(
-        (b) => b.id === candidateSupportBrick.id
-      );
-      return isGloballyPlaced || isLocallyPlaced;
-    }
-  );
+      // const supportEndX = supportBrick.x;
+      // return supportBrick.x > brick.x && supportEndX > brick.x;
+    })
+    .sort((a, b) => a.x - b.x);
 
-  let totalActualSupportLength = 0;
-  const sortedActualSupports = supportingBricksBelow.sort((a, b) => a.x - b.x);
+  if (supportingBricksBelow.length === 0) return false;
 
-  for (const support of sortedActualSupports) {
-    const overlapStart = Math.max(support.x, brick.x);
-    const overlapEnd = Math.min(support.x + support.length, brickEndX);
-    if (overlapEnd > overlapStart) {
-      totalActualSupportLength += overlapEnd - overlapStart;
-    }
+  // Scan-line algorithm to ensure continuous support from brick.x to brick.x + brick.length
+  let coveredUpTo = brick.x + HEAD_JOINT;
+
+  for (const supportBrick of supportingBricksBelow) {
+    if (supportBrick.x > coveredUpTo) return false;
+
+    coveredUpTo = supportBrick.x + supportBrick.length + HEAD_JOINT;
   }
-  // Ensure at least 25% of the brick's length is supported, or 90% as originally.
-  // Using 0.9 for consistency with original intent if not specified otherwise.
-  const requiredSupportLength = brick.length * 0.9;
-  return totalActualSupportLength >= requiredSupportLength;
+
+  // Check if we've covered the entire brick (100% support)
+  return coveredUpTo >= brick.x + brick.length;
 };
 
 /**
@@ -75,12 +65,12 @@ export const calculateWallStrides = (
 } => {
   const calculatedStrides: Stride[] = [];
   const calculatedEnvelopes: Record<number, StrideMeta> = {};
-  const globallyPlacedBrickIds = new Set<string>();
+  const placedBrickIds = new Set<string>();
   let strideIndexCounter = 0;
 
-  while (globallyPlacedBrickIds.size < allWallBricks.length) {
+  while (placedBrickIds.size < allWallBricks.length) {
     const unplacedBricks = allWallBricks.filter(
-      (b) => !globallyPlacedBrickIds.has(b.id)
+      (b) => !placedBrickIds.has(b.id)
     );
     if (unplacedBricks.length === 0) break;
 
@@ -152,14 +142,13 @@ export const calculateWallStrides = (
       );
 
       for (const potentialBrick of potentialBricksForOption) {
-        if (
-          isBrickSupported(
-            potentialBrick,
-            globallyPlacedBrickIds,
-            tempCurrentStrideAttempt,
-            allWallBricks // Pass allWallBricks here
-          )
-        ) {
+        // Create a merged array of all placed bricks (global + current stride)
+        const allPlacedBricks = [
+          ...allWallBricks.filter((b) => placedBrickIds.has(b.id)),
+          ...tempCurrentStrideAttempt,
+        ];
+
+        if (isBrickSupported(potentialBrick, allPlacedBricks)) {
           tempCurrentStrideAttempt.push(potentialBrick);
         }
       }
@@ -191,7 +180,7 @@ export const calculateWallStrides = (
     if (finalCurrentStride.length > 0) {
       finalCurrentStride.forEach((b) => {
         b.strideIndex = strideIndexCounter;
-        globallyPlacedBrickIds.add(b.id);
+        placedBrickIds.add(b.id);
       });
       finalCurrentStride.forEach((brick, order) => {
         brick.orderInStride = order;
