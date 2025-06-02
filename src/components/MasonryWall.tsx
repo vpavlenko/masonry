@@ -9,17 +9,21 @@ const HALF_BRICK_LENGTH = 100; // mm
 const BRICK_HEIGHT = 50; // mm
 const HEAD_JOINT = 10; // mm
 const COURSE_HEIGHT = 62.5; // mm (brick height + bed joint)
+const CUSTOM_BRICK_ECB1_LENGTH = 40; // mm, for English Cross Bond courses 1 and 3
 
 // Robot constraints
 const ROBOT_WIDTH = 800; // mm
 const ROBOT_HEIGHT = 1300; // mm
 
-type BrickType = "full" | "half";
+type BondType = "stretcher" | "english_cross";
+
+type BrickType = "full" | "half" | "custom_40" | "custom_end";
 
 interface Brick {
   x: number;
   y: number;
   type: BrickType;
+  length: number; // Actual length of the brick
   strideIndex: number;
   orderInStride: number;
   id: string;
@@ -51,7 +55,6 @@ const STRIDE_COLORS = [
   "#ff0",
   "#0000FF",
   "#FF0000", // red
-  "#0000FF", // blue
   "#FFA500", // orange
   "#008000", // green
   "#800080", // purple
@@ -328,95 +331,185 @@ const MasonryWall: React.FC = () => {
   const [repositionTime, setRepositionTime] = useState(10);
   const [robotRepositionTime, setRobotRepositionTime] = useState(600);
   const [wallScale, setWallScale] = useState(0.1); // Initial small scale
+  const [currentBondType, setCurrentBondType] = useState<BondType>("stretcher"); // New state for bond type
   const wallColumnRef = useRef<HTMLDivElement>(null);
   const allBricksRef = useRef<Brick[]>([]); // To store the initial grid of all bricks
 
   useEffect(() => {
-    const generateInitialBrickLayout = (): Brick[] => {
+    const generateInitialBrickLayout = (bondType: BondType): Brick[] => {
       const generatedBricks: Brick[] = [];
       const numCourses = Math.floor(WALL_HEIGHT / COURSE_HEIGHT);
 
       for (let courseIndex = 0; courseIndex < numCourses; courseIndex++) {
         const y = courseIndex * COURSE_HEIGHT;
-        const isEvenCourse = courseIndex % 2 === 0;
-        let x = 0;
+        let currentX = 0;
         let brickInCourseIndex = 0;
 
-        while (x < WALL_WIDTH) {
-          let brickLength: number;
-          let brickType: BrickType;
-          const remainingSpaceInRow = WALL_WIDTH - x;
+        if (bondType === "stretcher") {
+          const isEvenCourse = courseIndex % 2 === 0;
+          while (currentX < WALL_WIDTH) {
+            const remainingRowLength = WALL_WIDTH - currentX;
+            if (remainingRowLength <= 0) break;
 
-          if (!isEvenCourse && brickInCourseIndex === 0) {
-            if (remainingSpaceInRow >= HALF_BRICK_LENGTH) {
-              brickLength = HALF_BRICK_LENGTH;
-              brickType = "half";
+            let brickToPlace: { type: BrickType; length: number } | null = null;
+            const startWithHalf = !isEvenCourse && brickInCourseIndex === 0;
+
+            if (startWithHalf) {
+              if (remainingRowLength >= HALF_BRICK_LENGTH) {
+                brickToPlace = { type: "half", length: HALF_BRICK_LENGTH };
+              } else {
+                brickToPlace = {
+                  type: "custom_end",
+                  length: remainingRowLength,
+                };
+              }
+            } else {
+              if (remainingRowLength >= FULL_BRICK_LENGTH) {
+                brickToPlace = { type: "full", length: FULL_BRICK_LENGTH };
+              } else if (remainingRowLength >= HALF_BRICK_LENGTH) {
+                brickToPlace = { type: "half", length: HALF_BRICK_LENGTH };
+              } else {
+                brickToPlace = {
+                  type: "custom_end",
+                  length: remainingRowLength,
+                };
+              }
+            }
+
+            if (brickToPlace) {
+              generatedBricks.push({
+                x: currentX,
+                y,
+                type: brickToPlace.type,
+                length: brickToPlace.length,
+                strideIndex: -1,
+                orderInStride: -1,
+                id: `brick-${courseIndex}-${brickInCourseIndex}`,
+              });
+
+              if (currentX + brickToPlace.length < WALL_WIDTH) {
+                currentX += brickToPlace.length + HEAD_JOINT;
+              } else {
+                currentX += brickToPlace.length;
+              }
+              brickInCourseIndex++;
             } else {
               break;
             }
-          } else {
-            if (remainingSpaceInRow >= FULL_BRICK_LENGTH) {
-              brickLength = FULL_BRICK_LENGTH;
-              brickType = "full";
-            } else if (remainingSpaceInRow >= HALF_BRICK_LENGTH) {
-              brickLength = HALF_BRICK_LENGTH;
-              brickType = "half";
+          }
+        } else if (bondType === "english_cross") {
+          const patternType = courseIndex % 4;
+          while (currentX < WALL_WIDTH) {
+            const remainingRowLength = WALL_WIDTH - currentX;
+            if (remainingRowLength <= 0) break;
+
+            let brickToPlace: { type: BrickType; length: number } | null = null;
+
+            if (patternType === 0) {
+              // Full bricks primarily
+              if (remainingRowLength >= FULL_BRICK_LENGTH) {
+                brickToPlace = { type: "full", length: FULL_BRICK_LENGTH };
+              } else if (remainingRowLength >= HALF_BRICK_LENGTH) {
+                brickToPlace = { type: "half", length: HALF_BRICK_LENGTH };
+              } else {
+                brickToPlace = {
+                  type: "custom_end",
+                  length: remainingRowLength,
+                };
+              }
+            } else if (patternType === 1 || patternType === 3) {
+              // Custom(40) - Half - Half ...
+              if (brickInCourseIndex === 0) {
+                if (remainingRowLength >= CUSTOM_BRICK_ECB1_LENGTH) {
+                  brickToPlace = {
+                    type: "custom_40",
+                    length: CUSTOM_BRICK_ECB1_LENGTH,
+                  };
+                } else {
+                  brickToPlace = {
+                    type: "custom_end",
+                    length: remainingRowLength,
+                  };
+                }
+              } else {
+                if (remainingRowLength >= HALF_BRICK_LENGTH) {
+                  brickToPlace = { type: "half", length: HALF_BRICK_LENGTH };
+                } else {
+                  brickToPlace = {
+                    type: "custom_end",
+                    length: remainingRowLength,
+                  };
+                }
+              }
+            } else {
+              // patternType === 2: Half - Full - Full ...
+              if (brickInCourseIndex === 0) {
+                if (remainingRowLength >= HALF_BRICK_LENGTH) {
+                  brickToPlace = { type: "half", length: HALF_BRICK_LENGTH };
+                } else {
+                  brickToPlace = {
+                    type: "custom_end",
+                    length: remainingRowLength,
+                  };
+                }
+              } else {
+                if (remainingRowLength >= FULL_BRICK_LENGTH) {
+                  brickToPlace = { type: "full", length: FULL_BRICK_LENGTH };
+                } else if (remainingRowLength >= HALF_BRICK_LENGTH) {
+                  brickToPlace = { type: "half", length: HALF_BRICK_LENGTH };
+                } else {
+                  brickToPlace = {
+                    type: "custom_end",
+                    length: remainingRowLength,
+                  };
+                }
+              }
+            }
+
+            if (brickToPlace) {
+              generatedBricks.push({
+                x: currentX,
+                y,
+                type: brickToPlace.type,
+                length: brickToPlace.length,
+                strideIndex: -1,
+                orderInStride: -1,
+                id: `brick-${courseIndex}-${brickInCourseIndex}`,
+              });
+              if (currentX + brickToPlace.length < WALL_WIDTH) {
+                currentX += brickToPlace.length + HEAD_JOINT;
+              } else {
+                currentX += brickToPlace.length;
+              }
+              brickInCourseIndex++;
             } else {
               break;
             }
           }
-
-          // Ensure the last brick doesn't get an unnecessary head joint that pushes it out
-          const actualBrickLength = brickLength;
-          if (x + actualBrickLength > WALL_WIDTH) {
-            // This case should ideally be handled by the conditions above correctly.
-            // If remainingSpaceInRow was, say, 200, and FULL_BRICK_LENGTH is 210, it should take HALF_BRICK_LENGTH.
-            // If brickLength determined above makes x + brickLength > WALL_WIDTH, something is off or it's the very last bit.
-            // For now, we assume the logic correctly picks a brick that fits.
-          }
-
-          generatedBricks.push({
-            x,
-            y,
-            type: brickType,
-            strideIndex: -1,
-            orderInStride: -1,
-            id: `brick-${courseIndex}-${brickInCourseIndex}`,
-          });
-
-          if (x + brickLength < WALL_WIDTH) {
-            x += brickLength + HEAD_JOINT;
-          } else {
-            x += brickLength; // No head joint if it's the last brick flush with the wall end
-          }
-          brickInCourseIndex++;
         }
       }
       return generatedBricks;
     };
 
-    allBricksRef.current = generateInitialBrickLayout();
+    const currentAllBricks = generateInitialBrickLayout(currentBondType);
+    allBricksRef.current = currentAllBricks;
 
     const isBrickSupported = (
       brick: Brick,
       globallyPlacedBricks: ReadonlySet<string>,
-      bricksAlreadyInCurrentStride: readonly Brick[]
+      bricksAlreadyInCurrentStride: readonly Brick[],
+      allWallBricks: readonly Brick[]
     ): boolean => {
       if (brick.y === 0) return true;
 
-      const brickEndX =
-        brick.x +
-        (brick.type === "full" ? FULL_BRICK_LENGTH : HALF_BRICK_LENGTH);
+      const brickEndX = brick.x + brick.length;
 
-      const supportingBricksBelow = allBricksRef.current.filter(
+      const supportingBricksBelow = allWallBricks.filter(
         (candidateSupportBrick) => {
           if (candidateSupportBrick.y !== brick.y - COURSE_HEIGHT) return false;
 
           const supportCandidateEndX =
-            candidateSupportBrick.x +
-            (candidateSupportBrick.type === "full"
-              ? FULL_BRICK_LENGTH
-              : HALF_BRICK_LENGTH);
+            candidateSupportBrick.x + candidateSupportBrick.length;
           if (
             !(
               candidateSupportBrick.x < brickEndX &&
@@ -442,21 +535,20 @@ const MasonryWall: React.FC = () => {
 
       for (const support of sortedActualSupports) {
         const overlapStart = Math.max(support.x, brick.x);
-        const overlapEnd = Math.min(
-          support.x +
-            (support.type === "full" ? FULL_BRICK_LENGTH : HALF_BRICK_LENGTH),
-          brickEndX
-        );
+        const overlapEnd = Math.min(support.x + support.length, brickEndX);
         if (overlapEnd > overlapStart) {
           totalActualSupportLength += overlapEnd - overlapStart;
         }
       }
-      const requiredSupportLength =
-        (brick.type === "full" ? FULL_BRICK_LENGTH : HALF_BRICK_LENGTH) * 0.9;
+      // Ensure at least 25% of the brick's length is supported, or 90% as originally.
+      // Using 0.9 for consistency with original intent if not specified otherwise.
+      const requiredSupportLength = brick.length * 0.9;
       return totalActualSupportLength >= requiredSupportLength;
     };
 
-    const calculateWallStrides = (): {
+    const calculateWallStrides = (
+      allWallBricks: readonly Brick[]
+    ): {
       strides: Stride[];
       envelopes: Record<number, StrideMeta>;
     } => {
@@ -465,29 +557,24 @@ const MasonryWall: React.FC = () => {
       const globallyPlacedBrickIds = new Set<string>();
       let strideIndexCounter = 0;
 
-      while (globallyPlacedBrickIds.size < allBricksRef.current.length) {
-        const unplacedBricks = allBricksRef.current.filter(
+      while (globallyPlacedBrickIds.size < allWallBricks.length) {
+        const unplacedBricks = allWallBricks.filter(
           (b) => !globallyPlacedBrickIds.has(b.id)
         );
         if (unplacedBricks.length === 0) break;
 
-        // Build a comprehensive list of candidate robot X positions based on brick edges
         const candidateRobotStartXSet = new Set<number>();
-        allBricksRef.current.forEach((brick) => {
-          const brickLength =
-            brick.type === "full" ? FULL_BRICK_LENGTH : HALF_BRICK_LENGTH;
-          // Align robot envelope's left edge with brick's left edge
+        allWallBricks.forEach((brick) => {
           const candidate1 = Math.max(
             0,
             Math.min(brick.x, WALL_WIDTH - ROBOT_WIDTH)
           );
           candidateRobotStartXSet.add(candidate1);
 
-          // Align robot envelope's right edge with brick's right edge
           const candidate2 = Math.max(
             0,
             Math.min(
-              brick.x + brickLength - ROBOT_WIDTH,
+              brick.x + brick.length - ROBOT_WIDTH,
               WALL_WIDTH - ROBOT_WIDTH
             )
           );
@@ -506,13 +593,10 @@ const MasonryWall: React.FC = () => {
         };
 
         for (const candidateStartX of candidateRobotStartXPositions) {
-          // Find lowest unplaced brick that fits horizontally fully within envelope
           const horizontallyReachableUnplaced = unplacedBricks.filter((b) => {
-            const brickLength =
-              b.type === "full" ? FULL_BRICK_LENGTH : HALF_BRICK_LENGTH;
             return (
               b.x >= candidateStartX &&
-              b.x + brickLength <= candidateStartX + ROBOT_WIDTH
+              b.x + b.length <= candidateStartX + ROBOT_WIDTH
             );
           });
 
@@ -527,11 +611,9 @@ const MasonryWall: React.FC = () => {
 
           const potentialBricksForOption = unplacedBricks
             .filter((b) => {
-              const brickLength =
-                b.type === "full" ? FULL_BRICK_LENGTH : HALF_BRICK_LENGTH;
               return (
                 b.x >= candidateStartX &&
-                b.x + brickLength <= candidateStartX + ROBOT_WIDTH &&
+                b.x + b.length <= candidateStartX + ROBOT_WIDTH &&
                 b.y >= candidateStartY &&
                 b.y + BRICK_HEIGHT <= candidateStartY + ROBOT_HEIGHT
               );
@@ -546,7 +628,8 @@ const MasonryWall: React.FC = () => {
               isBrickSupported(
                 potentialBrick,
                 globallyPlacedBrickIds,
-                tempCurrentStrideAttempt
+                tempCurrentStrideAttempt,
+                allWallBricks // Pass allWallBricks here
               )
             ) {
               tempCurrentStrideAttempt.push(potentialBrick);
@@ -564,16 +647,21 @@ const MasonryWall: React.FC = () => {
         }
 
         if (bestStrideOption.count <= 0) {
-          // Could not place any bricks with current rules; mark the lowest brick as skipped to avoid infinite loop
           const overallLowestUnplacedBrick = unplacedBricks.sort((a, b) => {
             if (a.y !== b.y) return a.y - b.y;
             return a.x - b.x;
           })[0];
 
           if (overallLowestUnplacedBrick) {
+            console.warn(
+              `Could not place brick ${overallLowestUnplacedBrick.id} (type: ${overallLowestUnplacedBrick.type}, length: ${overallLowestUnplacedBrick.length}) in any stride, skipping it. X: ${overallLowestUnplacedBrick.x}, Y: ${overallLowestUnplacedBrick.y}`
+            );
             globallyPlacedBrickIds.add(overallLowestUnplacedBrick.id);
             continue;
           }
+          console.warn(
+            "No bricks could be placed and no unplaced bricks found to skip. Breaking stride calculation."
+          );
           break;
         }
 
@@ -605,10 +693,10 @@ const MasonryWall: React.FC = () => {
     };
 
     const { strides: calculatedStrides, envelopes: calculatedEnvelopes } =
-      calculateWallStrides();
+      calculateWallStrides(currentAllBricks);
     setStrides(calculatedStrides);
     setStrideEnvelopes(calculatedEnvelopes);
-  }, []);
+  }, [currentBondType]); // Added currentBondType as a dependency
 
   useEffect(() => {
     const updateScale = () => {
@@ -710,8 +798,7 @@ const MasonryWall: React.FC = () => {
           }}
         >
           {allRenderableBricks.map((brick) => {
-            const brickLength =
-              brick.type === "full" ? FULL_BRICK_LENGTH : HALF_BRICK_LENGTH;
+            const brickLength = brick.length; // Use actual brick length
             const isHighlightedStride =
               currentHighlightStrideIndex !== null &&
               brick.strideIndex === currentHighlightStrideIndex;
@@ -846,7 +933,8 @@ const MasonryWall: React.FC = () => {
           <p>
             Wall: {WALL_WIDTH}mm × {WALL_HEIGHT}mm | Strides: {strides.length} |
             Total Bricks: {allBricksRef.current.length} | Placed:{" "}
-            {allRenderableBricks.length}
+            {allRenderableBricks.length} | Bond:{" "}
+            {currentBondType.charAt(0).toUpperCase() + currentBondType.slice(1)}
           </p>
         </WallHeader>
         <DebugSection>
@@ -872,6 +960,25 @@ const MasonryWall: React.FC = () => {
             />
           </div>
         </DebugSection>
+        <DebugSection>
+          <h4>Wall Settings:</h4>
+          <div style={{ marginBottom: "10px" }}>
+            <label>Bond Type: </label>
+            <button
+              onClick={() => setCurrentBondType("stretcher")}
+              disabled={currentBondType === "stretcher"}
+              style={{ marginLeft: "5px", marginRight: "5px" }}
+            >
+              Stretcher
+            </button>
+            <button
+              onClick={() => setCurrentBondType("english_cross")}
+              disabled={currentBondType === "english_cross"}
+            >
+              English Cross
+            </button>
+          </div>
+        </DebugSection>
 
         {hoveredBrick ? (
           <HoverInfoBox>
@@ -886,12 +993,8 @@ const MasonryWall: React.FC = () => {
               </p>
               <p style={{ textAlign: "right" }}>
                 <strong>TR:</strong> (
-                {(
-                  hoveredBrick.x +
-                  (hoveredBrick.type === "full"
-                    ? FULL_BRICK_LENGTH
-                    : HALF_BRICK_LENGTH)
-                ).toFixed(1)}
+                {(hoveredBrick.x + hoveredBrick.length) // Use actual brick length
+                  .toFixed(1)}
                 , {(hoveredBrick.y + BRICK_HEIGHT).toFixed(1)})mm
               </p>
             </div>
